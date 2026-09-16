@@ -99,6 +99,18 @@ export type GapStatus =
 
 export type Impact = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
 
+/** Linha de produto do Consórcio (somente Imobiliário, Veículos Leves, Veículos Pesados). */
+export interface Product {
+  id: string;
+  name: string;
+  shortName: string;
+  description: string;
+  order: number;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Audience {
   id: string;
   code: AudienceCode;
@@ -121,6 +133,8 @@ export interface Journey {
   description: string;
   order: number;
   momentIds: string[];
+  /** Produtos aos quais a jornada se aplica. Vazio = todos os produtos. */
+  productIds: string[];
   active: boolean;
   createdAt: string;
   updatedAt: string;
@@ -159,11 +173,17 @@ export interface Capability {
   updatedAt: string;
 }
 
+/**
+ * Capacidade abstrata do usuário.
+ * Produto NÃO vive aqui — vive na Implementação (FeatureChannelContext).
+ * O campo `product` é legado (fallback) e deve ser ignorado quando houver productId nas implementações.
+ */
 export interface Feature {
   id: string;
   capabilityId: string;
   name: string;
   description: string;
+  /** @deprecated Use productId na implementação (FeatureChannelContext). */
   product: string;
   priority: Priority;
   owner: string;
@@ -198,9 +218,15 @@ export interface ChannelContext {
   updatedAt: string;
 }
 
+/**
+ * Implementação = funcionalidade em um contexto concreto.
+ * Grão: Feature × Product × ChannelContext (público + momento + canal).
+ */
 export interface FeatureChannelContext {
   id: string;
   featureId: string;
+  /** Produto desta implementação (dimensão estrutural). */
+  productId: string;
   channelContextId: string;
   status: FeatureStatus;
   experience: ExperienceLevel;
@@ -284,6 +310,8 @@ export interface Gap {
   journeyId: string;
   userNeedId: string;
   featureId: string | null;
+  /** Produto ao qual o gap se refere (opcional = transversal). */
+  productId: string | null;
   currentChannelId: string | null;
   futureChannelId: string | null;
   impact: Impact;
@@ -295,12 +323,14 @@ export interface Gap {
   isDemo: boolean;
 }
 
-/** Flattened row for map / matrix / filters */
+/** Flattened row for map / matrix / filters (= uma implementação). */
 export interface FeatureMapRow {
   featureId: string;
   featureName: string;
   featureDescription: string;
+  productId: string;
   product: string;
+  productShortName: string;
   priority: Priority;
   owner: string;
   uxOwner: string;
@@ -345,6 +375,9 @@ export interface MapFilters {
   temporalStatuses: TemporalStatus[];
   statuses: FeatureStatus[];
   experiences: ExperienceLevel[];
+  /** Product ids (preferred). */
+  productIds: string[];
+  /** @deprecated Prefer productIds. Kept for filtros legados por nome. */
   products: string[];
   priorities: Priority[];
   responsibles: string[];
@@ -392,6 +425,7 @@ export interface ChannelComparison {
 }
 
 export interface DemoDatabase {
+  products: Product[];
   audiences: Audience[];
   moments: Moment[];
   journeys: Journey[];

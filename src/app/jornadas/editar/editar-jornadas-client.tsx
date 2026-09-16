@@ -145,7 +145,7 @@ export function EditarJornadasClient({
         breadcrumb="Jornadas › Editar"
         title={`Jornada do ${audienceName}`}
         description="Customize as etapas desta jornada por momento. O catálogo de etapas é compartilhado; o nome e a ordem podem variar por público."
-        actions={
+        leading={
           <div className="flex flex-wrap items-center gap-2">
             <BackButton href="/jornadas" />
             <Button asChild variant="ghost" size="sm">

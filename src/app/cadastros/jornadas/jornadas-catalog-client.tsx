@@ -104,7 +104,7 @@ export function JornadasCatalogClient({
         breadcrumb="Cadastros › Jornadas"
         title="Catálogo global de jornadas"
         description="Sitemap das etapas compartilhadas. Use o catálogo para cruzar jornadas entre Cliente, Economiário e Parceiro — a mesma etapa pode aparecer com nomes diferentes em cada público."
-        actions={<BackButton href="/jornadas" />}
+        leading={<BackButton href="/jornadas" />}
       />
 
       <SurfaceCard className="p-4">

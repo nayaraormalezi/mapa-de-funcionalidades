@@ -54,6 +54,7 @@ export async function updateSession(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const isAuthRoute =
     pathname === "/login" || pathname.startsWith("/auth/");
+  const isPasswordResetRoute = pathname === "/auth/reset-password";
 
   if (!isAuthenticated && !isAuthRoute) {
     const url = request.nextUrl.clone();
@@ -62,7 +63,8 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (isAuthenticated && isAuthRoute) {
+  // Recovery session must reach /auth/reset-password to set a new password.
+  if (isAuthenticated && isAuthRoute && !isPasswordResetRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/";
     url.search = "";

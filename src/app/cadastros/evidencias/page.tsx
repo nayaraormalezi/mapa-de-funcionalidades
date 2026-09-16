@@ -140,7 +140,8 @@ export default async function CadastroEvidenciasPage({
 
 function Header({ title }: { title: string }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="space-y-3">
+      <BackButton href="/configuracoes?tab=cadastros" />
       <div>
         <p className="text-xs font-semibold tracking-[0.14em] text-[var(--brand)] uppercase">
           Cadastros
@@ -149,7 +150,6 @@ function Header({ title }: { title: string }) {
           {title}
         </h1>
       </div>
-      <BackButton href="/configuracoes?tab=cadastros" />
     </div>
   );
 }

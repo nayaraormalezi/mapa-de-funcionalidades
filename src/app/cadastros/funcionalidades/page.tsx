@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/card";
 import { getDatabase } from "@/services/db";
 import { priorityLabel } from "@/lib/labels";
+import { DEFAULT_PRODUCT, PRODUCT_NAME_OPTIONS } from "@/lib/products";
 
 export default async function CadastroFuncionalidadesPage({
   searchParams,
@@ -30,7 +31,8 @@ export default async function CadastroFuncionalidadesPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="space-y-3">
+        <BackButton href="/configuracoes?tab=cadastros" />
         <div>
           <p className="text-xs font-semibold tracking-[0.14em] text-[var(--brand)] uppercase">
             Cadastros
@@ -39,7 +41,6 @@ export default async function CadastroFuncionalidadesPage({
             Funcionalidades
           </h1>
         </div>
-        <BackButton href="/configuracoes?tab=cadastros" />
       </div>
 
       <Card>
@@ -69,7 +70,10 @@ export default async function CadastroFuncionalidadesPage({
               <Field
                 label="Produto"
                 name="product"
-                defaultValue={editing?.product ?? "Consórcio"}
+                as="select"
+                required
+                defaultValue={editing?.product ?? DEFAULT_PRODUCT}
+                options={PRODUCT_NAME_OPTIONS}
               />
               <Field
                 label="Prioridade"

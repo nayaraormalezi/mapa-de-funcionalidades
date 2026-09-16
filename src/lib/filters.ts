@@ -11,6 +11,7 @@ export const emptyFilters: MapFilters = {
   temporalStatuses: [],
   statuses: [],
   experiences: [],
+  productIds: [],
   products: [],
   priorities: [],
   responsibles: [],
@@ -38,6 +39,7 @@ export function applyMapFilters(
         row.audienceName,
         row.momentName,
         row.product,
+        row.productShortName,
         row.owner,
         row.capabilityName,
       ]
@@ -56,6 +58,7 @@ export function applyMapFilters(
       matchesMulti(filters.temporalStatuses, row.temporalStatus) &&
       matchesMulti(filters.statuses, row.status) &&
       matchesMulti(filters.experiences, row.experience) &&
+      matchesMulti(filters.productIds, row.productId) &&
       matchesMulti(filters.products, row.product) &&
       matchesMulti(filters.priorities, row.priority) &&
       matchesMulti(filters.responsibles, row.responsible) &&
@@ -76,6 +79,7 @@ export function countActiveFilters(filters: MapFilters): number {
     "temporalStatuses",
     "statuses",
     "experiences",
+    "productIds",
     "products",
     "priorities",
     "responsibles",

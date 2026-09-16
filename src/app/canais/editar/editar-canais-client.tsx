@@ -141,7 +141,7 @@ export function EditarCanaisClient({
         breadcrumb="Canais › Editar"
         title={`Canais do ${audienceName}`}
         description="Defina quais canais entram na jornada deste público em cada momento. O catálogo de canais é compartilhado; a ativação é por público."
-        actions={
+        leading={
           <div className="flex flex-wrap items-center gap-2">
             <BackButton href="/canais" />
             <Button asChild variant="ghost" size="sm">

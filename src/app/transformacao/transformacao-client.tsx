@@ -93,7 +93,7 @@ export function TransformacaoClient({
         breadcrumb={`Canais › Transformação › ${audienceName}`}
         title={`Atual → Futuro · ${audienceName}`}
         description={`Dados exclusivos de ${audienceName}. Prontidão: ${formatPercent(readinessPercent)}.`}
-        actions={
+        leading={
           <div className="flex flex-wrap items-center gap-2">
             <BackButton href="/canais" />
             <Button asChild variant="ghost" size="sm">

@@ -29,7 +29,7 @@ export function TransformacaoAudienceGate({
         breadcrumb="Canais › Transformação"
         title="Atual → Futuro"
         description="Escolha o público para ver somente a transformação daquele perfil."
-        actions={<BackButton href="/canais" />}
+        leading={<BackButton href="/canais" />}
       />
 
       <SurfaceCard className="p-6">

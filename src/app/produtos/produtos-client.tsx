@@ -54,7 +54,10 @@ type ProductChannel = {
 };
 
 export type ProductSummary = {
+  id?: string;
   name: string;
+  shortName?: string;
+  description?: string;
   featureTotal: number;
   featureAvailable: number;
   featureInProgress: number;
@@ -134,10 +137,10 @@ export function ProdutosClient({
       <PageHeader
         breadcrumb="Ecossistema › Produtos"
         title="Produtos"
-        description="Acompanhe a cobertura de funcionalidades, canais e jornadas por produto da CAIXA Consórcio."
+        description="O Consórcio CAIXA se organiza em três linhas: Imobiliário, Veículos Leves e Veículos Pesados. Acompanhe cobertura, canais e jornadas de cada uma."
         callout={{
-          title: "Uma visão integrada",
-          body: "Entenda como cada produto se desdobra em experiências por público, momento e canal.",
+          title: "Três linhas, uma experiência",
+          body: "Compare cobertura e gaps entre Imobiliário, Veículos Leves e Veículos Pesados para priorizar evolução.",
           icon: Package,
         }}
       />
@@ -227,13 +230,17 @@ export function ProdutosClient({
                     >
                       <td className="px-4 py-3">
                         <p className="font-medium text-slate-900">
-                          {product.name}
+                          {product.shortName || product.name}
                         </p>
                         <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">
-                          {product.owners[0] || "Sem product owner"}
-                          {product.owners.length > 1
-                            ? ` +${product.owners.length - 1}`
-                            : ""}
+                          {product.description ||
+                            (product.owners[0]
+                              ? `${product.owners[0]}${
+                                  product.owners.length > 1
+                                    ? ` +${product.owners.length - 1}`
+                                    : ""
+                                }`
+                              : "Sem product owner")}
                         </p>
                       </td>
                       <td className="px-4 py-3 tabular-nums">
@@ -289,9 +296,10 @@ export function ProdutosClient({
                   {selected.name}
                 </h2>
                 <p className="mt-1 text-xs text-[var(--muted-foreground)]">
-                  {selected.owners.length > 0
-                    ? selected.owners.join(" · ")
-                    : "Sem product owner cadastrado"}
+                  {selected.description ||
+                    (selected.owners.length > 0
+                      ? selected.owners.join(" · ")
+                      : "Sem product owner cadastrado")}
                 </p>
               </div>
 

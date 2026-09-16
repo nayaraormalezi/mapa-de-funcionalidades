@@ -7,17 +7,23 @@ export function PageHeader({
   title,
   description,
   callout,
+  leading,
   actions,
 }: {
   breadcrumb?: string;
   title: string;
   description?: string;
   callout?: { title: string; body: string; icon?: LucideIcon };
+  /** Controles à esquerda, acima do título (ex.: Voltar). */
+  leading?: React.ReactNode;
   actions?: React.ReactNode;
 }) {
   const CalloutIcon = callout?.icon;
   return (
     <div className="mb-5 space-y-4">
+      {leading ? (
+        <div className="flex flex-wrap items-center gap-3">{leading}</div>
+      ) : null}
       {breadcrumb ? (
         <p className="text-xs font-medium text-[var(--muted-foreground)]">
           {breadcrumb}

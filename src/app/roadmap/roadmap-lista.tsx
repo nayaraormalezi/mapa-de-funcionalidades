@@ -2,13 +2,10 @@
 
 import { Fragment, useState } from "react";
 import { StageBadge } from "@/components/badges/stage-badge";
-import { PriorityBadge } from "@/components/badges/priority-badge";
 import { SurfaceCard } from "@/components/ui/prototype";
 import { evolutionPhaseLabel, temporalStatusLabel } from "@/lib/labels";
-import { formatDate } from "@/lib/utils";
 import {
   activeEvolutions,
-  formatMonthYear,
   groupByFeature,
   type FeatureEvolution,
   type RoadmapImpl,
@@ -40,15 +37,14 @@ export function RoadmapListaView({
         <thead className="bg-slate-50 text-xs tracking-wide text-[var(--muted-foreground)] uppercase">
           <tr>
             <th className="px-4 py-3">Funcionalidade</th>
+            <th className="px-4 py-3">Produto</th>
             <th className="px-4 py-3">Público</th>
             <th className="px-4 py-3">Momento</th>
+            <th className="px-4 py-3">Jornada</th>
             <th className="px-4 py-3">Canal</th>
-            <th className="px-4 py-3">Situação do canal</th>
+            <th className="px-4 py-3">Situação</th>
             <th className="px-4 py-3">Fase</th>
             <th className="px-4 py-3">Evoluções</th>
-            <th className="px-4 py-3">Início</th>
-            <th className="px-4 py-3">Previsão</th>
-            <th className="px-4 py-3">Prioridade</th>
             <th className="px-4 py-3">Responsável</th>
           </tr>
         </thead>
@@ -79,6 +75,7 @@ function FeatureGroup({
   group: {
     featureId: string;
     featureName: string;
+    productCount: number;
     items: RoadmapImpl[];
   };
   expanded: Record<string, boolean>;
@@ -86,14 +83,10 @@ function FeatureGroup({
   onOpenFeature: (featureId: string) => void;
   onOpenEvolution: (item: RoadmapImpl, evo: FeatureEvolution) => void;
 }) {
-  const audienceMomentPairs = [
-    ...new Set(group.items.map((i) => `${i.audienceName} · ${i.momentName}`)),
-  ];
-
   return (
     <>
       <tr className="border-t border-[var(--border)] bg-slate-50/80">
-        <td colSpan={11} className="px-4 py-2.5">
+        <td colSpan={10} className="px-4 py-2.5">
           <button
             type="button"
             onClick={() => onOpenFeature(group.featureId)}
@@ -103,8 +96,10 @@ function FeatureGroup({
               {group.featureName}
             </span>
             <span className="ml-2 text-[11px] font-normal normal-case text-slate-500">
-              {audienceMomentPairs.join(" · ")} · {group.items.length}{" "}
-              {group.items.length === 1 ? "canal" : "canais"}
+              {group.productCount}{" "}
+              {group.productCount === 1 ? "produto" : "produtos"} ·{" "}
+              {group.items.length}{" "}
+              {group.items.length === 1 ? "implementação" : "implementações"}
             </span>
           </button>
         </td>
@@ -124,11 +119,19 @@ function FeatureGroup({
                 <span className="mr-1.5 text-slate-300">{prefix}</span>
                 {item.featureName}
               </td>
+              <td className="px-4 py-2.5">
+                <span className="rounded-full bg-[var(--brand-soft)] px-2 py-0.5 text-[10px] font-semibold text-[var(--brand)]">
+                  {item.productShortName}
+                </span>
+              </td>
               <td className="px-4 py-2.5 text-xs text-slate-700">
                 {item.audienceName}
               </td>
               <td className="px-4 py-2.5 text-xs text-slate-700">
                 {item.momentName}
+              </td>
+              <td className="px-4 py-2.5 text-xs text-slate-700">
+                {item.journeyName}
               </td>
               <td className="px-4 py-2.5 text-xs font-medium text-slate-900">
                 {item.channelName}
@@ -162,15 +165,6 @@ function FeatureGroup({
                   <span className="text-xs text-slate-400">—</span>
                 )}
               </td>
-              <td className="px-4 py-2.5 text-xs text-slate-500">
-                {formatDate(item.startDate)}
-              </td>
-              <td className="px-4 py-2.5 text-xs text-slate-500">
-                {formatMonthYear(item.expectedDate)}
-              </td>
-              <td className="px-4 py-2.5">
-                <PriorityBadge priority={item.priority} />
-              </td>
               <td className="px-4 py-2.5 text-xs text-slate-600">
                 {item.responsible || "—"}
               </td>
@@ -182,7 +176,7 @@ function FeatureGroup({
                     className="border-t border-amber-50 bg-amber-50/30"
                   >
                     <td
-                      colSpan={4}
+                      colSpan={5}
                       className="cursor-pointer px-4 py-2.5 pl-10 text-xs text-amber-900"
                       onClick={() => onOpenEvolution(item, evo)}
                     >
@@ -190,6 +184,9 @@ function FeatureGroup({
                     </td>
                     <td className="px-4 py-2.5 text-xs text-slate-500">
                       {item.channelName}
+                    </td>
+                    <td className="px-4 py-2.5 text-xs text-slate-500">
+                      {item.productShortName}
                     </td>
                     <td className="px-4 py-2.5 text-xs font-medium text-amber-800">
                       {evolutionPhaseLabel(evo.phase)}
@@ -202,15 +199,6 @@ function FeatureGroup({
                       >
                         Ver →
                       </button>
-                    </td>
-                    <td className="px-4 py-2.5 text-xs text-slate-500">
-                      {formatDate(evo.startDate)}
-                    </td>
-                    <td className="px-4 py-2.5 text-xs text-slate-500">
-                      {formatMonthYear(evo.expectedDate)}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <PriorityBadge priority={evo.priority} />
                     </td>
                     <td className="px-4 py-2.5 text-xs text-slate-600">
                       {evo.responsible || "—"}

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireCanEdit } from "@/lib/auth";
+import { DEFAULT_PRODUCT } from "@/lib/products";
 import { createClient, isSupabaseEnabled } from "@/lib/supabase/server";
 import { invalidateDatabaseCache } from "@/services/db";
 
@@ -61,7 +62,7 @@ export async function upsertFeature(formData: FormData): Promise<ActionResult> {
     capability_id: String(formData.get("capability_id") ?? ""),
     name: String(formData.get("name") ?? "").trim(),
     description: String(formData.get("description") ?? "").trim(),
-    product: String(formData.get("product") ?? "Consórcio").trim(),
+    product: String(formData.get("product") ?? DEFAULT_PRODUCT).trim(),
     priority: String(formData.get("priority") ?? "MEDIUM"),
     owner: String(formData.get("owner") ?? "").trim(),
     ux_owner: String(formData.get("ux_owner") ?? "").trim(),
@@ -307,6 +308,7 @@ export async function upsertFeatureChannelContext(
     id,
     feature_id: String(formData.get("feature_id") ?? ""),
     channel_context_id: String(formData.get("channel_context_id") ?? ""),
+    product_id: String(formData.get("product_id") ?? "").trim() || null,
     status,
     experience: String(formData.get("experience") ?? "NOT_EVALUATED"),
     phase,
@@ -348,6 +350,7 @@ export async function upsertGap(formData: FormData): Promise<ActionResult> {
     moment_id: String(formData.get("moment_id") ?? ""),
     journey_id: String(formData.get("journey_id") ?? ""),
     user_need_id: String(formData.get("user_need_id") ?? ""),
+    product_id: (formData.get("product_id") as string) || null,
     feature_id: (formData.get("feature_id") as string) || null,
     current_channel_id: (formData.get("current_channel_id") as string) || null,
     future_channel_id: (formData.get("future_channel_id") as string) || null,

@@ -42,6 +42,7 @@ import {
   gapTypeLabel,
   priorityLabel,
 } from "@/lib/labels";
+import { PRODUCT_OPTIONS } from "@/lib/products";
 import { cn, formatDate } from "@/lib/utils";
 import type {
   Capability,
@@ -228,7 +229,14 @@ export function GovernanceHub({
           <CardDescription>{feature.description}</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Meta label="Produto" value={feature.product} />
+          <Meta
+            label="Produtos"
+            value={
+              [...new Set(contexts.map((c) => c.productShortName || c.product))]
+                .filter(Boolean)
+                .join(" · ") || "—"
+            }
+          />
           <Meta label="Jornada" value={hierarchy.journey?.name ?? "—"} />
           <Meta label="Necessidade" value={hierarchy.userNeed?.name ?? "—"} />
           <Meta label="Capacidade" value={hierarchy.capability?.name ?? "—"} />
@@ -371,6 +379,7 @@ export function GovernanceHub({
                 <table className="min-w-full text-left text-sm">
                   <thead className="bg-[var(--muted)] text-xs tracking-wide text-[var(--muted-foreground)] uppercase">
                     <tr>
+                      <th className="px-3 py-2">Produto</th>
                       <th className="px-3 py-2">Público</th>
                       <th className="px-3 py-2">Momento</th>
                       <th className="px-3 py-2">Canal</th>
@@ -386,6 +395,11 @@ export function GovernanceHub({
                         key={ctx.featureChannelContextId}
                         className="border-t border-[var(--border)]"
                       >
+                        <td className="px-3 py-3">
+                          <span className="rounded-full bg-[var(--brand-soft)] px-2 py-0.5 text-[10px] font-semibold text-[var(--brand)]">
+                            {ctx.productShortName || ctx.product}
+                          </span>
+                        </td>
                         <td className="px-3 py-3">
                           <AudienceBadge
                             code={ctx.audienceCode}
@@ -464,6 +478,16 @@ export function GovernanceHub({
                   ) : null}
                   <input type="hidden" name="feature_id" value={feature.id} />
                   <div className="grid gap-3 md:grid-cols-2">
+                    <Field
+                      label="Produto"
+                      name="product_id"
+                      as="select"
+                      required
+                      defaultValue={
+                        editingContext?.productId ?? "imobiliario"
+                      }
+                      options={PRODUCT_OPTIONS}
+                    />
                     <Field
                       label="Contexto de canal"
                       name="channel_context_id"

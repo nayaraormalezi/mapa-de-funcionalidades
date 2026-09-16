@@ -48,6 +48,7 @@ import {  ChevronLeft,
 
 type Option = { value: string; label: string };
 type JourneyOption = Option & { momentIds: string[] };
+type NeedOption = Option & { journeyId: string };
 
 const legendDot: Record<FeatureStage, string> = {
   BACKLOG: "bg-[#005ca9]",
@@ -127,6 +128,7 @@ export function MapaClient({
   audiences,
   moments,
   journeys,
+  needs,
   channels,
   products,
   responsibles,
@@ -135,6 +137,7 @@ export function MapaClient({
   audiences: Option[];
   moments: Option[];
   journeys: JourneyOption[];
+  needs: NeedOption[];
   channels: Option[];
   products: Option[];
   responsibles: Option[];
@@ -313,8 +316,8 @@ export function MapaClient({
             />
             <FilterSelect
               label="Produto"
-              value={filters.products[0] ?? ""}
-              onChange={(v) => singleSelect(updateFilter, "products", v)}
+              value={filters.productIds[0] ?? ""}
+              onChange={(v) => singleSelect(updateFilter, "productIds", v)}
               options={[{ value: "", label: "Todos" }, ...products]}
             />
             <FilterSelect
@@ -589,6 +592,7 @@ export function MapaClient({
         audiences={audiences}
         moments={moments}
         journeys={journeys}
+        needs={needs}
         channels={channels}
       />
     </div>

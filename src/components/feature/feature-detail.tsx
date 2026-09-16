@@ -61,7 +61,7 @@ export function FeatureDetail({
           <CardDescription>{feature.description}</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Meta label="Produto" value={feature.product} />
+          <Meta label="Produto" value={feature.product || "—"} />
           <Meta label="Owner" value={feature.owner} />
           <Meta label="UX Owner" value={feature.uxOwner} />
           <Meta label="CX Owner" value={feature.cxOwner} />

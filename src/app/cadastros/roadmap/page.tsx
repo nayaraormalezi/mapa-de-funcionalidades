@@ -35,7 +35,8 @@ export default async function CadastroRoadmapPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="space-y-3">
+        <BackButton href="/configuracoes?tab=cadastros" />
         <div>
           <p className="text-xs font-semibold tracking-[0.14em] text-[var(--brand)] uppercase">
             Cadastros
@@ -44,7 +45,6 @@ export default async function CadastroRoadmapPage({
             Roadmap
           </h1>
         </div>
-        <BackButton href="/configuracoes?tab=cadastros" />
       </div>
 
       <Card>

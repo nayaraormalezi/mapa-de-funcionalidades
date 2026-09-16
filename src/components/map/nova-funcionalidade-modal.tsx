@@ -8,6 +8,7 @@ import type { Priority } from "@/types";
 
 type Option = { value: string; label: string };
 type JourneyOption = Option & { momentIds: string[] };
+type NeedOption = Option & { journeyId: string };
 
 const STEPS = [
   { id: 1, label: "Contexto" },
@@ -104,36 +105,74 @@ export function NovaFuncionalidadeModal({
   audiences,
   moments,
   journeys,
+  needs,
   channels,
+  initial,
 }: {
   open: boolean;
   onClose: () => void;
   audiences: Option[];
   moments: Option[];
   journeys: JourneyOption[];
+  needs: NeedOption[];
   channels: Option[];
+  initial?: {
+    audienceIds?: string[];
+    momentId?: string;
+    journeyId?: string;
+    needId?: string;
+    priority?: Priority;
+    lockNeed?: boolean;
+  };
 }) {
   const [step, setStep] = useState(1);
   const [audienceIds, setAudienceIds] = useState<string[]>([]);
   const [momentId, setMomentId] = useState("");
   const [journeyId, setJourneyId] = useState("");
-  const [need, setNeed] = useState("");
+  const [needId, setNeedId] = useState("");
   const [priority, setPriority] = useState<Priority | "">("MEDIUM");
   const [featureName, setFeatureName] = useState("");
   const [featureDesc, setFeatureDesc] = useState("");
   const [channelIds, setChannelIds] = useState<string[]>([]);
+  const needLocked = Boolean(initial?.lockNeed && initial?.needId);
+
+  useEffect(() => {
+    if (!open) return;
+    setStep(1);
+    setAudienceIds(initial?.audienceIds ?? []);
+    setMomentId(initial?.momentId ?? "");
+    setJourneyId(initial?.journeyId ?? "");
+    setNeedId(initial?.needId ?? "");
+    setPriority(initial?.priority ?? "MEDIUM");
+    setFeatureName("");
+    setFeatureDesc("");
+    setChannelIds([]);
+  }, [open, initial]);
 
   const journeysForMoment = useMemo(() => {
     if (!momentId) return [];
     return journeys.filter((j) => j.momentIds.includes(momentId));
   }, [journeys, momentId]);
 
+  const needsForJourney = useMemo(() => {
+    if (!journeyId) return [];
+    return needs.filter((n) => n.journeyId === journeyId);
+  }, [needs, journeyId]);
+
   useEffect(() => {
-    if (!journeyId) return;
+    if (!open || !journeyId) return;
     if (!journeysForMoment.some((j) => j.value === journeyId)) {
       setJourneyId("");
+      if (!needLocked) setNeedId("");
     }
-  }, [journeysForMoment, journeyId]);
+  }, [journeysForMoment, journeyId, open, needLocked]);
+
+  useEffect(() => {
+    if (!open || needLocked) return;
+    if (needId && !needsForJourney.some((n) => n.value === needId)) {
+      setNeedId("");
+    }
+  }, [needsForJourney, needId, open, needLocked]);
 
   const canContinue = useMemo(() => {
     if (step === 1) {
@@ -141,7 +180,7 @@ export function NovaFuncionalidadeModal({
         audienceIds.length > 0 &&
           momentId &&
           journeyId &&
-          need.trim() &&
+          needId &&
           priority,
       );
     }
@@ -153,7 +192,7 @@ export function NovaFuncionalidadeModal({
     audienceIds,
     momentId,
     journeyId,
-    need,
+    needId,
     priority,
     featureName,
     channelIds,
@@ -170,6 +209,7 @@ export function NovaFuncionalidadeModal({
   const momentLabel = moments.find((m) => m.value === momentId)?.label ?? "—";
   const journeyLabel =
     journeys.find((j) => j.value === journeyId)?.label ?? "—";
+  const needLabel = needs.find((n) => n.value === needId)?.label ?? "—";
   const priorityLabel =
     PRIORITY_OPTIONS.find((p) => p.value === priority)?.label ?? "—";
   const channelsLabel =
@@ -184,7 +224,7 @@ export function NovaFuncionalidadeModal({
     setAudienceIds([]);
     setMomentId("");
     setJourneyId("");
-    setNeed("");
+    setNeedId("");
     setPriority("MEDIUM");
     setFeatureName("");
     setFeatureDesc("");
@@ -310,6 +350,7 @@ export function NovaFuncionalidadeModal({
                   onChange={(value) => {
                     setMomentId(value);
                     setJourneyId("");
+                    if (!needLocked) setNeedId("");
                   }}
                 />
               </Field>
@@ -325,7 +366,10 @@ export function NovaFuncionalidadeModal({
               >
                 <select
                   value={journeyId}
-                  onChange={(e) => setJourneyId(e.target.value)}
+                  onChange={(e) => {
+                    setJourneyId(e.target.value);
+                    if (!needLocked) setNeedId("");
+                  }}
                   disabled={!momentId}
                   className="h-10 w-full rounded-lg border border-[var(--border)] bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-[var(--brand-ring)] disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
                 >
@@ -345,14 +389,42 @@ export function NovaFuncionalidadeModal({
                 ) : null}
               </Field>
 
-              <Field label="Necessidade do usuário" required>
-                <textarea
-                  value={need}
-                  onChange={(e) => setNeed(e.target.value)}
-                  rows={3}
-                  placeholder='Ex: "Quero consultar o status da minha cota a qualquer momento."'
-                  className="w-full rounded-lg border border-[var(--border)] bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--brand-ring)]"
-                />
+              <Field
+                label="Necessidade do usuário"
+                required
+                hint={
+                  needLocked
+                    ? "Definida pela necessidade de origem — não pode ser alterada."
+                    : journeyId
+                      ? "Somente necessidades já cadastradas nesta jornada."
+                      : "Selecione a jornada para listar as necessidades."
+                }
+              >
+                <select
+                  value={needId}
+                  onChange={(e) => setNeedId(e.target.value)}
+                  disabled={!journeyId || needLocked}
+                  className="h-10 w-full rounded-lg border border-[var(--border)] bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-[var(--brand-ring)] disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500"
+                >
+                  <option value="">
+                    {journeyId
+                      ? "Selecionar..."
+                      : "Selecione a jornada primeiro"}
+                  </option>
+                  {(needLocked
+                    ? needs.filter((n) => n.value === needId)
+                    : needsForJourney
+                  ).map((n) => (
+                    <option key={n.value} value={n.value}>
+                      {n.label}
+                    </option>
+                  ))}
+                </select>
+                {!needLocked && journeyId && needsForJourney.length === 0 ? (
+                  <p className="mt-1.5 text-xs text-amber-700">
+                    Nenhuma necessidade cadastrada nesta jornada.
+                  </p>
+                ) : null}
               </Field>
 
               <Field label="Prioridade" required>
@@ -444,7 +516,7 @@ export function NovaFuncionalidadeModal({
               <Row label="Público" value={audienceLabel} />
               <Row label="Momento" value={momentLabel} />
               <Row label="Jornada" value={journeyLabel} />
-              <Row label="Necessidade" value={need || "—"} />
+              <Row label="Necessidade" value={needLabel} />
               <Row label="Prioridade" value={priorityLabel} />
               <Row label="Funcionalidade" value={featureName || "—"} />
               <Row label="Descrição" value={featureDesc || "—"} />

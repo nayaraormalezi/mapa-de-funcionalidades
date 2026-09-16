@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 import {
   activeEvolutions,
   formatMonthYear,
-  groupByFeature,
+  groupByFeatureThenProduct,
   type FeatureEvolution,
   type RoadmapImpl,
 } from "@/app/roadmap/roadmap-types";
@@ -103,7 +103,7 @@ export function RoadmapTimelineView({
   onOpenFeature: (featureId: string) => void;
   onOpenEvolution: (item: RoadmapImpl, evo: FeatureEvolution) => void;
 }) {
-  const groups = groupByFeature(items);
+  const groups = groupByFeatureThenProduct(items);
   const months = buildMonths();
   const trackWidth = months.length * COL;
 
@@ -125,7 +125,7 @@ export function RoadmapTimelineView({
           className="sticky left-0 z-30 shrink-0 border-r border-[var(--border)] bg-slate-50 px-4 py-2.5 text-[11px] font-semibold tracking-wide text-slate-500 uppercase"
           style={{ width: LABEL }}
         >
-          Funcionalidade / Canal
+          Funcionalidade / Produto / Canal
         </div>
         <div className="flex" style={{ width: trackWidth }}>
           {months.map((m) => (
@@ -156,62 +156,85 @@ export function RoadmapTimelineView({
                 {group.featureName}
               </span>
               <span className="ml-2 text-[11px] text-slate-400">
-                {group.items.length}{" "}
-                {group.items.length === 1 ? "canal" : "canais"}
+                {group.products.length}{" "}
+                {group.products.length === 1 ? "produto" : "produtos"}
               </span>
             </button>
             <div style={{ width: trackWidth }} />
           </div>
 
-          {group.items.map((item) => {
-            const implBar = barFromDates(
-              item.startDate ?? item.launchDate,
-              item.phase === "AVAILABLE"
-                ? new Date().toISOString()
-                : item.expectedDate,
-              months,
-              item.phase === "AVAILABLE",
-            );
-            const active = activeEvolutions(item);
+          {group.products.map((product) => (
+            <div key={product.productId}>
+              <div
+                className="flex bg-slate-50/60"
+                style={{ minWidth: LABEL + trackWidth }}
+              >
+                <div
+                  className="sticky left-0 z-10 shrink-0 border-r border-slate-100 bg-slate-50/95 px-4 py-1.5"
+                  style={{ width: LABEL }}
+                >
+                  <span className="text-xs font-semibold text-slate-700">
+                    {product.productShortName}
+                  </span>
+                  <span className="ml-2 text-[10px] text-slate-400">
+                    {product.items.length}{" "}
+                    {product.items.length === 1 ? "canal" : "canais"}
+                  </span>
+                </div>
+                <div style={{ width: trackWidth }} />
+              </div>
 
-            return (
-              <div key={item.id}>
-                <TimelineRow
-                  label={`└ ${item.channelName}`}
-                  sublabel={`${item.audienceName} · ${item.momentName} · ${temporalStatusLabel[item.temporalStatus]}`}
-                  bar={implBar}
-                  barClass={STAGE_BAR[item.phase]}
-                  barText={featureStageLabel[item.phase]}
-                  barTitle={`${featureStageLabel[item.phase]} · ${formatMonthYear(item.startDate)} → ${formatMonthYear(item.expectedDate)}`}
-                  months={months}
-                  trackWidth={trackWidth}
-                  onClick={() => onOpenFeature(item.featureId)}
-                />
-                {active.map((evo) => {
-                  const evoBar = barFromDates(
-                    evo.startDate,
-                    evo.expectedDate,
-                    months,
-                  );
-                  return (
+              {product.items.map((item) => {
+                const implBar = barFromDates(
+                  item.startDate ?? item.launchDate,
+                  item.phase === "AVAILABLE"
+                    ? new Date().toISOString()
+                    : item.expectedDate,
+                  months,
+                  item.phase === "AVAILABLE",
+                );
+                const active = activeEvolutions(item);
+
+                return (
+                  <div key={item.id}>
                     <TimelineRow
-                      key={evo.id}
-                      label={`·· Evolução: ${evo.title}`}
-                      sublabel={`${evolutionPhaseLabel(evo.phase)} · Prev. ${formatMonthYear(evo.expectedDate)}`}
-                      bar={evoBar}
-                      barClass="bg-amber-300/90"
-                      barText={`✦ ${evolutionPhaseLabel(evo.phase)}`}
-                      barTitle={evo.title}
+                      label={`└ ${item.channelName}`}
+                      sublabel={`${item.audienceName} · ${item.momentName} · ${temporalStatusLabel[item.temporalStatus]}`}
+                      bar={implBar}
+                      barClass={STAGE_BAR[item.phase]}
+                      barText={featureStageLabel[item.phase]}
+                      barTitle={`${featureStageLabel[item.phase]} · ${formatMonthYear(item.startDate)} → ${formatMonthYear(item.expectedDate)}`}
                       months={months}
                       trackWidth={trackWidth}
-                      indented
-                      onClick={() => onOpenEvolution(item, evo)}
+                      onClick={() => onOpenFeature(item.featureId)}
                     />
-                  );
-                })}
-              </div>
-            );
-          })}
+                    {active.map((evo) => {
+                      const evoBar = barFromDates(
+                        evo.startDate,
+                        evo.expectedDate,
+                        months,
+                      );
+                      return (
+                        <TimelineRow
+                          key={evo.id}
+                          label={`·· Evolução: ${evo.title}`}
+                          sublabel={`${evolutionPhaseLabel(evo.phase)} · Prev. ${formatMonthYear(evo.expectedDate)}`}
+                          bar={evoBar}
+                          barClass="bg-amber-300/90"
+                          barText={`✦ ${evolutionPhaseLabel(evo.phase)}`}
+                          barTitle={evo.title}
+                          months={months}
+                          trackWidth={trackWidth}
+                          indented
+                          onClick={() => onOpenEvolution(item, evo)}
+                        />
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
         </div>
       ))}
     </div>

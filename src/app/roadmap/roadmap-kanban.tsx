@@ -339,7 +339,8 @@ function BoardCardView({
           <span className="text-slate-400"> · {card.item.channelName}</span>
         </p>
         <p className="mt-0.5 text-[11px] text-slate-500">
-          {card.item.audienceName} · {card.item.momentName}
+          {card.item.productShortName} · {card.item.audienceName} ·{" "}
+          {card.item.momentName}
         </p>
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           <span className="text-[11px] font-medium text-amber-800">
@@ -382,7 +383,7 @@ function BoardCardView({
           {item.channelName}
         </p>
         <p className="mt-0.5 text-[11px] text-slate-500">
-          {item.audienceName} · {item.momentName}
+          {item.productShortName} · {item.audienceName} · {item.momentName}
         </p>
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-700">

@@ -5,7 +5,7 @@ import type { GlobalSearchItem } from "@/components/layout/global-search";
 import { AuthProvider } from "@/components/auth/auth-provider";
 import { getAuthState } from "@/lib/auth";
 import { isSupabaseEnabled } from "@/lib/supabase/server";
-import { getChannels, getJourneys } from "@/services/channels";
+import { buildFeatureMapRows, getChannels, getJourneys } from "@/services/channels";
 import { getFeatures } from "@/services/features";
 import { getGaps } from "@/services/gaps";
 import "./globals.css";
@@ -20,9 +20,9 @@ const body = IBM_Plex_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Mapa de Funcionalidades · CAIXA Consórcio",
+  title: "PRISMA · UX + CX · CAIXA Consórcio",
   description:
-    "Ferramenta interna de governança UX + CX + Produto para inventário vivo de necessidades e funcionalidades.",
+    "Ambiente interno de UX + CX do Consórcio CAIXA — visão integrada de funcionalidades, jornadas, canais e experiências.",
 };
 
 export default async function RootLayout({
@@ -30,23 +30,34 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const [auth, gaps, features, journeys, channels] = await Promise.all([
+  const [auth, gaps, features, journeys, channels, mapRows] = await Promise.all([
     getAuthState(),
     getGaps(),
     getFeatures(),
     getJourneys(),
     getChannels(),
+    buildFeatureMapRows(),
   ]);
   const gapsBadgeCount = gaps.filter(
     (g) => g.status === "OPEN" || g.status === "IN_PROGRESS",
   ).length;
+
+  const productsByFeature = new Map<string, string[]>();
+  for (const row of mapRows) {
+    const list = productsByFeature.get(row.featureId) ?? [];
+    if (!list.includes(row.productShortName)) list.push(row.productShortName);
+    productsByFeature.set(row.featureId, list);
+  }
 
   const searchItems: GlobalSearchItem[] = [
     ...features.map((feature) => ({
       id: feature.id,
       type: "feature" as const,
       label: feature.name,
-      subtitle: feature.product || undefined,
+      subtitle:
+        productsByFeature.get(feature.id)?.join(" · ") ||
+        feature.product ||
+        undefined,
       href: `/funcionalidades/${feature.id}`,
     })),
     ...journeys.map((journey) => ({

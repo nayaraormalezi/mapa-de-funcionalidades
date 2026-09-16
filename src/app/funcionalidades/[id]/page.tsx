@@ -62,7 +62,7 @@ export default async function FeatureDetailPage({
 
   const fccOptions = contexts.map((c) => ({
     value: c.featureChannelContextId,
-    label: `${c.channelName} · ${c.audienceName} · ${c.momentName}`,
+    label: `${c.productShortName} · ${c.channelName} · ${c.audienceName} · ${c.momentName}`,
   }));
 
   return (

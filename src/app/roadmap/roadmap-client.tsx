@@ -47,12 +47,14 @@ export function RoadmapClient({
   audiences,
   moments,
   channels = [],
+  products = [],
   canEdit = false,
 }: {
   items: RoadmapImpl[];
   audiences: { id: string; name: string }[];
   moments: { id: string; name: string }[];
   channels?: { id: string; name: string }[];
+  products?: { id: string; name: string }[];
   phases?: RoadmapPhaseDef[];
   canEdit?: boolean;
 }) {
@@ -64,6 +66,7 @@ export function RoadmapClient({
   const [evoOverrides, setEvoOverrides] = useState<
     Record<string, Partial<FeatureEvolution>>
   >({});
+  const [productId, setProductId] = useState("");
   const [audienceId, setAudienceId] = useState("");
   const [momentId, setMomentId] = useState("");
   const [channelId, setChannelId] = useState("");
@@ -101,6 +104,7 @@ export function RoadmapClient({
     const cutoff = periodCutoff(period);
     const q = search.trim().toLowerCase();
     return items.filter((item) => {
+      if (productId && item.productId !== productId) return false;
       if (audienceId && item.audienceId !== audienceId) return false;
       if (momentId && item.momentId !== momentId) return false;
       if (channelId && item.channelId !== channelId) return false;
@@ -123,10 +127,12 @@ export function RoadmapClient({
       if (q) {
         const hay = [
           item.featureName,
+          item.productName,
           item.channelName,
           item.responsible,
           item.audienceName,
           item.momentName,
+          item.journeyName,
           ...item.evolutions.map(
             (e) => `${e.title} ${e.description} ${e.responsible}`,
           ),
@@ -139,6 +145,7 @@ export function RoadmapClient({
     });
   }, [
     items,
+    productId,
     audienceId,
     momentId,
     channelId,
@@ -183,6 +190,7 @@ export function RoadmapClient({
   }, [items, drawerFeatureId]);
 
   function clearFilters() {
+    setProductId("");
     setAudienceId("");
     setMomentId("");
     setChannelId("");
@@ -216,6 +224,7 @@ export function RoadmapClient({
     fd.set("id", item.id);
     fd.set("feature_id", item.featureId);
     fd.set("channel_context_id", item.channelContextId);
+    fd.set("product_id", item.productId);
     fd.set("phase", nextPhase);
     fd.set("status", item.status);
     fd.set("experience", item.experience);
@@ -369,6 +378,16 @@ export function RoadmapClient({
 
         <SurfaceCard className="p-4">
           <div className="flex flex-wrap items-end gap-3">
+            <FilterSelect
+              label="Produto"
+              value={productId}
+              onChange={setProductId}
+              options={[
+                { value: "", label: "Todos" },
+                ...products.map((p) => ({ value: p.id, label: p.name })),
+              ]}
+              className="min-w-[160px]"
+            />
             <FilterSelect
               label="Público"
               value={audienceId}

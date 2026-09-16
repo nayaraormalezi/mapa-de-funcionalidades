@@ -4,6 +4,7 @@ import {
   normalizeDeadlineStatus,
   normalizeFeatureStage,
 } from "@/lib/labels";
+import { getProductMeta, isProductId, parseProductId } from "@/lib/products";
 import type {
   Channel,
   ChannelContext,
@@ -17,6 +18,12 @@ export async function getAudiences() {
 
 export async function getMoments() {
   return (await getDatabase()).moments.filter((m) => m.active);
+}
+
+export async function getProducts() {
+  return (await getDatabase())
+    .products.filter((p) => p.active)
+    .sort((a, b) => a.order - b.order);
 }
 
 export async function getJourneys() {
@@ -82,6 +89,13 @@ export async function buildFeatureMapRows(): Promise<FeatureMapRow[]> {
       );
       if (!feature || !channelContext || !feature.active) return null;
 
+      const productId = parseProductId(
+        fcc.productId || feature.product || undefined,
+      );
+      if (!productId || !isProductId(productId)) return null;
+      const productMeta =
+        db.products.find((p) => p.id === productId) ?? getProductMeta(productId);
+
       const audience = db.audiences.find(
         (a) => a.id === channelContext.audienceId,
       );
@@ -122,7 +136,9 @@ export async function buildFeatureMapRows(): Promise<FeatureMapRow[]> {
         featureId: feature.id,
         featureName: feature.name,
         featureDescription: feature.description,
-        product: feature.product,
+        productId: productMeta.id,
+        product: productMeta.name,
+        productShortName: productMeta.shortName,
         priority: feature.priority,
         owner: feature.owner,
         uxOwner: feature.uxOwner,

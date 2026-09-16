@@ -4,6 +4,7 @@ import {
   normalizeDeadlineStatus,
   normalizeFeatureStage,
 } from "@/lib/labels";
+import { catalogAsProducts, isProductId, resolveProductId } from "@/lib/products";
 
 /** Snake_case DB row shapes (Supabase). */
 export type AudienceRow = {
@@ -109,9 +110,21 @@ export type ChannelContextRow = {
   updated_at: string;
 };
 
+export type ProductRow = {
+  id: string;
+  name: string;
+  short_name: string;
+  description: string;
+  sort_order: number;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
 export type FeatureChannelContextRow = {
   id: string;
   feature_id: string;
+  product_id?: string | null;
   channel_context_id: string;
   status: string;
   experience: string;
@@ -175,6 +188,7 @@ export type GapRow = {
   journey_id: string;
   user_need_id: string;
   feature_id: string | null;
+  product_id?: string | null;
   current_channel_id: string | null;
   future_channel_id: string | null;
   impact: string;
@@ -206,6 +220,7 @@ export type FeatureEvolutionRow = {
 };
 
 export function mapDatabase(rows: {
+  products?: ProductRow[];
   audiences: AudienceRow[];
   moments: MomentRow[];
   journeys: JourneyRow[];
@@ -231,6 +246,22 @@ export function mapDatabase(rows: {
   }
 
   return {
+    products: (() => {
+      const fromDb = (rows.products ?? [])
+        .filter((p) => isProductId(p.id))
+        .map((p) => ({
+          id: p.id,
+          name: p.name,
+          shortName: p.short_name,
+          description: p.description,
+          order: p.sort_order,
+          active: p.active,
+          createdAt: p.created_at,
+          updatedAt: p.updated_at,
+        }))
+        .sort((a, b) => a.order - b.order);
+      return fromDb.length > 0 ? fromDb : catalogAsProducts();
+    })(),
     audiences: rows.audiences.map((a) => ({
       id: a.id,
       code: a.code as DemoDatabase["audiences"][number]["code"],
@@ -251,6 +282,7 @@ export function mapDatabase(rows: {
       description: j.description,
       order: j.sort_order,
       momentIds: momentIdsByJourney.get(j.id) ?? [],
+      productIds: [],
       active: j.active,
       createdAt: j.created_at,
       updatedAt: j.updated_at,
@@ -328,9 +360,11 @@ export function mapDatabase(rows: {
         statusRaw in { ON_TRACK: 1, DELAYED: 1, NO_DEADLINE: 1 }
           ? normalizeDeadlineStatus(statusRaw)
           : deriveDeadlineStatus(f.expected_date, phase);
+      const feature = rows.features.find((feat) => feat.id === f.feature_id);
       return {
         id: f.id,
         featureId: f.feature_id,
+        productId: resolveProductId(f.product_id || feature?.product || undefined),
         channelContextId: f.channel_context_id,
         status,
         experience:
@@ -412,6 +446,7 @@ export function mapDatabase(rows: {
       journeyId: g.journey_id,
       userNeedId: g.user_need_id,
       featureId: g.feature_id,
+      productId: g.product_id ?? null,
       currentChannelId: g.current_channel_id,
       futureChannelId: g.future_channel_id,
       impact: g.impact as DemoDatabase["gaps"][number]["impact"],

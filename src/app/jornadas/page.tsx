@@ -1,4 +1,5 @@
 import { JornadasClient } from "@/app/jornadas/jornadas-client";
+import { PRODUCT_CATALOG } from "@/lib/products";
 import { buildFeatureMapRows } from "@/services/channels";
 import { getDatabase } from "@/services/db";
 
@@ -61,9 +62,10 @@ export default async function JornadasPage({
     date: e.date,
   }));
 
-  const products = Array.from(
-    new Set(rows.map((r) => r.product).filter(Boolean)),
-  ).sort();
+  const products = PRODUCT_CATALOG.map((p) => ({
+    id: p.id,
+    name: p.name,
+  }));
 
   return (
     <JornadasClient
@@ -81,6 +83,19 @@ export default async function JornadasPage({
           description: a.description,
         }))}
       products={products}
+      moments={db.moments
+        .filter((m) => m.active)
+        .map((m) => ({ value: m.id, label: m.name }))}
+      journeysCatalog={db.journeys
+        .filter((j) => j.active)
+        .map((j) => ({
+          value: j.id,
+          label: j.name,
+          momentIds: j.momentIds,
+        }))}
+      channels={db.channels
+        .filter((c) => c.active)
+        .map((c) => ({ value: c.id, label: c.name }))}
       initialJourneyId={initialJourneyId}
     />
   );

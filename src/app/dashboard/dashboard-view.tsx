@@ -232,7 +232,7 @@ export function DashboardView({
     return rows.filter((r) => {
       if (audienceId && r.audienceId !== audienceId) return false;
       if (momentId && r.momentId !== momentId) return false;
-      if (product && r.product !== product) return false;
+      if (product && r.productId !== product && r.product !== product) return false;
       if (cutoff && !rowInPeriod(r, cutoff)) return false;
       return true;
     });

@@ -1,4 +1,5 @@
 import { getAuthState } from "@/lib/auth";
+import { PRODUCT_OPTIONS } from "@/lib/products";
 import {
   buildFeatureMapRows,
   getAudiences,
@@ -25,9 +26,7 @@ export default async function DashboardPage() {
     auth.email?.split("@")[0]?.trim() ||
     "usuário";
 
-  const products = Array.from(new Set(rows.map((r) => r.product)))
-    .filter(Boolean)
-    .map((p) => ({ value: p, label: p }));
+  const products = PRODUCT_OPTIONS;
 
   const channelById = new Map(db.channels.map((c) => [c.id, c.name]));
   const audienceById = new Map(db.audiences.map((a) => [a.id, a.name]));

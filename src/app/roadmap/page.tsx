@@ -1,6 +1,7 @@
 import { RoadmapClient } from "@/app/roadmap/roadmap-client";
 import { getAuthState } from "@/lib/auth";
 import { officialStageCatalog } from "@/lib/labels";
+import { PRODUCT_CATALOG } from "@/lib/products";
 import {
   buildFeatureMapRows,
   getAudiences,
@@ -32,6 +33,9 @@ export default async function RoadmapPage() {
     featureId: row.featureId,
     featureName: row.featureName,
     featureDescription: row.featureDescription,
+    productId: row.productId,
+    productName: row.product,
+    productShortName: row.productShortName,
     phase: row.phase,
     status: row.status,
     startDate: row.startDate,
@@ -62,6 +66,7 @@ export default async function RoadmapPage() {
       audiences={audiences.map((a) => ({ id: a.id, name: a.name }))}
       moments={moments.map((m) => ({ id: m.id, name: m.name }))}
       channels={channels.map((c) => ({ id: c.id, name: c.name }))}
+      products={PRODUCT_CATALOG.map((p) => ({ id: p.id, name: p.name }))}
       phases={officialStageCatalog()}
       canEdit={auth.canEdit}
     />

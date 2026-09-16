@@ -20,9 +20,22 @@ import { temporalStatusLabel } from "@/lib/labels";
 import { getAuthState } from "@/lib/auth";
 import { getDatabase } from "@/services/db";
 
-function Header({ title }: { title: string }) {
+function safeReturnPath(value: string | undefined): string | null {
+  if (!value) return null;
+  if (!value.startsWith("/") || value.startsWith("//")) return null;
+  return value;
+}
+
+function Header({
+  title,
+  backHref = "/configuracoes?tab=cadastros",
+}: {
+  title: string;
+  backHref?: string;
+}) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="space-y-3">
+      <BackButton href={backHref} />
       <div>
         <p className="text-xs font-semibold tracking-[0.14em] text-[var(--brand)] uppercase">
           Cadastros
@@ -31,7 +44,6 @@ function Header({ title }: { title: string }) {
           {title}
         </h1>
       </div>
-      <BackButton href="/configuracoes?tab=cadastros" />
     </div>
   );
 }
@@ -135,17 +147,19 @@ export async function MomentosPage({
 export async function NecessidadesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ edit?: string }>;
+  searchParams: Promise<{ edit?: string; from?: string }>;
 }) {
-  const { edit } = await searchParams;
+  const { edit, from } = await searchParams;
   const db = await getDatabase();
   const { canEdit } = await getAuthState();
   const items = db.userNeeds.filter((n) => n.active);
   const editing = items.find((i) => i.id === edit);
+  const backHref =
+    safeReturnPath(from) ?? "/configuracoes?tab=cadastros";
 
   return (
     <div className="space-y-6">
-      <Header title="Necessidades" />
+      <Header title="Necessidades" backHref={backHref} />
       <Card>
         <CardHeader>
           <CardTitle>{editing ? "Editar" : "Nova"} necessidade</CardTitle>
@@ -191,7 +205,9 @@ export async function NecessidadesPage({
           id: i.id,
           title: i.name,
           subtitle: db.journeys.find((j) => j.id === i.journeyId)?.name ?? "",
-          editHref: `/cadastros/necessidades?edit=${i.id}`,
+          editHref: `/cadastros/necessidades?edit=${i.id}${
+            from ? `&from=${encodeURIComponent(from)}` : ""
+          }`,
           table: "user_needs",
         }))}
       />

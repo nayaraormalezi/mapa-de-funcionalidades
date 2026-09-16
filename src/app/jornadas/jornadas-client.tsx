@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   FilterSelect,
   PageHeader,
@@ -11,9 +12,16 @@ import {
   UnderlineTabs,
 } from "@/components/ui/prototype";
 import { EditJourneysAudienceModal } from "@/app/jornadas/edit-journeys-audience-modal";
+import { NovaFuncionalidadeModal } from "@/components/map/nova-funcionalidade-modal";
+import { CrudForm, Field } from "@/components/cadastros/crud-form";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { PriorityBadge } from "@/components/badges/priority-badge";
 import { StatusBadge } from "@/components/badges/status-badge";
+import {
+  archiveRecord,
+  upsertUserNeed,
+} from "@/app/actions/crud";
 import { gapStatusLabel, gapTypeLabel } from "@/lib/labels";
 import { cn, formatPercent } from "@/lib/utils";
 import type {
@@ -40,6 +48,8 @@ import {
   MapPin,
   Monitor,
   PenLine,
+  Pencil,
+  Plus,
   RefreshCw,
   Route,
   Search,
@@ -219,6 +229,9 @@ export function JornadasClient({
   rows,
   audiences,
   products,
+  moments = [],
+  journeysCatalog = [],
+  channels = [],
   initialJourneyId,
 }: {
   journeyStages: JourneyStep[];
@@ -232,9 +245,14 @@ export function JornadasClient({
     code: AudienceCode;
     description?: string;
   }[];
-  products: string[];
+  products: { id: string; name: string }[];
+  moments?: { value: string; label: string }[];
+  journeysCatalog?: { value: string; label: string; momentIds: string[] }[];
+  channels?: { value: string; label: string }[];
   initialJourneyId?: string;
 }) {
+  const router = useRouter();
+  const [pendingDelete, startDelete] = useTransition();
   const stageForInitial = initialJourneyId
     ? journeyStages.find((s) => s.id === initialJourneyId)
     : undefined;
@@ -252,6 +270,20 @@ export function JornadasClient({
   const [tab, setTab] = useState<TabId>("overview");
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [expandedNeedId, setExpandedNeedId] = useState<string | null>(null);
+  const [addFeatureOpen, setAddFeatureOpen] = useState(false);
+  const [addNeedOpen, setAddNeedOpen] = useState(false);
+  const [deleteNeed, setDeleteNeed] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  const [addFeatureInitial, setAddFeatureInitial] = useState<{
+    audienceIds?: string[];
+    momentId?: string;
+    journeyId?: string;
+    needId?: string;
+    priority?: Priority;
+    lockNeed?: boolean;
+  }>({});
 
   const journeys = useMemo(
     () =>
@@ -289,7 +321,7 @@ export function JornadasClient({
   const journeyRows = useMemo(() => {
     let scoped = rows.filter((r) => r.journeyId === journey?.id);
     if (audienceId) scoped = scoped.filter((r) => r.audienceId === audienceId);
-    if (product) scoped = scoped.filter((r) => r.product === product);
+    if (product) scoped = scoped.filter((r) => r.productId === product || r.product === product);
     if (temporal)
       scoped = scoped.filter((r) => r.temporalStatus === temporal);
     return scoped;
@@ -460,6 +492,109 @@ export function JornadasClient({
         audiences={audiences}
       />
 
+      <NovaFuncionalidadeModal
+        open={addFeatureOpen}
+        onClose={() => setAddFeatureOpen(false)}
+        audiences={audiences.map((a) => ({ value: a.id, label: a.name }))}
+        moments={moments}
+        journeys={journeysCatalog}
+        needs={needs.map((n) => ({
+          value: n.id,
+          label: n.name,
+          journeyId: n.journeyId,
+        }))}
+        channels={channels}
+        initial={addFeatureInitial}
+      />
+
+      <ConfirmDialog
+        open={Boolean(deleteNeed)}
+        title="Excluir necessidade"
+        description={`Tem certeza que deseja excluir essa necessidade${
+          deleteNeed?.name ? ` "${deleteNeed.name}"` : ""
+        }?`}
+        confirmLabel={pendingDelete ? "Excluindo…" : "Excluir"}
+        cancelLabel="Cancelar"
+        tone="danger"
+        onCancel={() => {
+          if (!pendingDelete) setDeleteNeed(null);
+        }}
+        onConfirm={() => {
+          if (!deleteNeed) return;
+          startDelete(async () => {
+            const result = await archiveRecord("user_needs", deleteNeed.id);
+            if (result.ok) {
+              setDeleteNeed(null);
+              if (expandedNeedId === deleteNeed.id) setExpandedNeedId(null);
+              router.refresh();
+            } else {
+              alert(result.message);
+            }
+          });
+        }}
+      />
+
+      {addNeedOpen && journey ? (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+          <button
+            type="button"
+            className="absolute inset-0 bg-slate-950/45"
+            aria-label="Fechar"
+            onClick={() => setAddNeedOpen(false)}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="relative z-[81] w-full max-w-lg rounded-2xl border border-[var(--border)] bg-white p-5 shadow-2xl"
+          >
+            <h2 className="text-lg font-semibold text-slate-900">
+              Adicionar necessidade
+            </h2>
+            <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+              Nova necessidade na etapa {journey.name}.
+            </p>
+            <div className="mt-4">
+              <CrudForm
+                action={upsertUserNeed}
+                submitLabel="Criar necessidade"
+                onSuccess={() => {
+                  setAddNeedOpen(false);
+                  setTab("needs");
+                }}
+              >
+                <input type="hidden" name="journey_id" value={journey.id} />
+                <div className="grid gap-3">
+                  <Field label="Nome" name="name" required />
+                  <Field
+                    label="Prioridade"
+                    name="priority"
+                    as="select"
+                    defaultValue="MEDIUM"
+                    options={[
+                      { value: "CRITICAL", label: "Crítica" },
+                      { value: "HIGH", label: "Alta" },
+                      { value: "MEDIUM", label: "Média" },
+                      { value: "LOW", label: "Baixa" },
+                    ]}
+                  />
+                  <Field label="Descrição" name="description" as="textarea" />
+                </div>
+              </CrudForm>
+            </div>
+            <div className="mt-3 flex justify-end">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setAddNeedOpen(false)}
+              >
+                Cancelar
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <SurfaceCard className="p-4">
         <div className="flex flex-wrap items-end gap-3">
           <FilterSelect
@@ -479,7 +614,7 @@ export function JornadasClient({
             onChange={setProduct}
             options={[
               { value: "", label: "Todos" },
-              ...products.map((p) => ({ value: p, label: p })),
+              ...products.map((p) => ({ value: p.id, label: p.name })),
             ]}
             className="min-w-[140px]"
           />
@@ -506,7 +641,18 @@ export function JornadasClient({
       </SurfaceCard>
 
       <SurfaceCard className="p-4">
-        <SectionTitle>Visão das jornadas</SectionTitle>
+        <SectionTitle
+          action={
+            <Link
+              href={`/jornadas/editar?publico=${audienceId}`}
+              className="shrink-0 text-sm font-medium text-[var(--brand)] hover:underline"
+            >
+              Editar esta jornada
+            </Link>
+          }
+        >
+          Visão das jornadas
+        </SectionTitle>
         {!journey ? (
           <p className="rounded-xl border border-dashed border-[var(--border)] px-4 py-8 text-center text-sm text-[var(--muted-foreground)]">
             Nenhuma etapa cadastrada para {audienceName}. Use &quot;Editar
@@ -601,19 +747,13 @@ export function JornadasClient({
           </div>
         </div>
 
-        <div className="mt-5 flex flex-col gap-3 border-b border-[var(--border)] pb-0 lg:flex-row lg:items-center lg:justify-between">
+        <div className="mt-5 border-b border-[var(--border)]">
           <UnderlineTabs
             className="border-b-0"
             value={tab}
             onChange={(id) => setTab(id as TabId)}
             options={tabs}
           />
-          <Link
-            href={`/jornadas/editar?publico=${audienceId}`}
-            className="mb-2 shrink-0 text-sm font-medium text-[var(--brand)] hover:underline lg:mb-3"
-          >
-            Editar esta jornada
-          </Link>
         </div>
 
         <div className="mt-5">
@@ -820,7 +960,23 @@ export function JornadasClient({
           ) : null}
 
           {tab === "needs" ? (
-            <div className="divide-y divide-[var(--border)] rounded-xl border border-[var(--border)]">
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm text-[var(--muted-foreground)]">
+                  Necessidades da etapa {journey?.name ?? ""}
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="gap-1.5"
+                  disabled={!journey}
+                  onClick={() => setAddNeedOpen(true)}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Adicionar necessidade
+                </Button>
+              </div>
+              <div className="divide-y divide-[var(--border)] rounded-xl border border-[var(--border)]">
               {needsWithCoverage.length === 0 ? (
                 <p className="p-4 text-sm text-[var(--muted-foreground)]">
                   Nenhuma necessidade nesta jornada.
@@ -831,15 +987,15 @@ export function JornadasClient({
                     const open = expandedNeedId === need.id;
                     return (
                       <div key={need.id}>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setExpandedNeedId(open ? null : need.id)
-                          }
-                          aria-expanded={open}
-                          className="flex w-full flex-col gap-3 p-4 text-left transition-colors hover:bg-slate-50 sm:flex-row sm:items-center sm:justify-between"
-                        >
-                          <div className="min-w-0 flex-1">
+                        <div className="flex flex-col gap-3 p-4 transition-colors hover:bg-slate-50 sm:flex-row sm:items-center sm:justify-between">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setExpandedNeedId(open ? null : need.id)
+                            }
+                            aria-expanded={open}
+                            className="min-w-0 flex-1 text-left"
+                          >
                             <div className="flex flex-wrap items-center gap-2">
                               <ChevronDown
                                 className={cn(
@@ -862,26 +1018,65 @@ export function JornadasClient({
                             <p className="mt-1 pl-6 text-xs text-[var(--muted-foreground)]">
                               {need.description || "Sem descrição."}
                             </p>
-                          </div>
-                          <div className="w-full sm:w-44">
-                            <div className="mb-1 flex justify-between text-xs">
-                              <span className="text-slate-500">Cobertura</span>
-                              <span className="font-semibold tabular-nums text-slate-800">
-                                {formatPercent(pct)}
-                              </span>
+                          </button>
+                          <div className="flex w-full items-center gap-3 sm:w-auto">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setExpandedNeedId(open ? null : need.id)
+                              }
+                              className="min-w-0 flex-1 text-left sm:w-44 sm:flex-none"
+                            >
+                              <div className="mb-1 flex justify-between text-xs">
+                                <span className="text-slate-500">Cobertura</span>
+                                <span className="font-semibold tabular-nums text-slate-800">
+                                  {formatPercent(pct)}
+                                </span>
+                              </div>
+                              <ProgressBar
+                                value={pct}
+                                barClassName={coverageBarClass(pct)}
+                              />
+                              <p className="mt-1 text-[10px] text-slate-400">
+                                {available} de {total} disponíveis
+                              </p>
+                            </button>
+                            <div className="flex shrink-0 items-center gap-1.5">
+                              <Button
+                                asChild
+                                variant="outline"
+                                size="sm"
+                                className="h-8 gap-1 px-2.5"
+                              >
+                                <Link
+                                  href={`/cadastros/necessidades?edit=${need.id}&from=${encodeURIComponent(
+                                    `/jornadas?journey=${journey?.id ?? need.journeyId}`,
+                                  )}`}
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                  Editar
+                                </Link>
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-8"
+                                onClick={() =>
+                                  setDeleteNeed({
+                                    id: need.id,
+                                    name: need.name,
+                                  })
+                                }
+                              >
+                                Excluir
+                              </Button>
                             </div>
-                            <ProgressBar
-                              value={pct}
-                              barClassName={coverageBarClass(pct)}
-                            />
-                            <p className="mt-1 text-[10px] text-slate-400">
-                              {available} de {total} disponíveis
-                            </p>
                           </div>
-                        </button>
+                        </div>
 
                         {open ? (
-                          <div className="border-t border-[var(--border)] bg-slate-50/70 px-4 py-3">
+                          <div className="space-y-3 border-t border-[var(--border)] bg-slate-50/70 px-4 py-3">
                             {features.length === 0 ? (
                               <p className="text-xs text-[var(--muted-foreground)]">
                                 Nenhuma funcionalidade atribuída a esta
@@ -913,6 +1108,29 @@ export function JornadasClient({
                                 ))}
                               </ul>
                             )}
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="gap-1.5"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setAddFeatureInitial({
+                                  audienceIds: audienceId
+                                    ? [audienceId]
+                                    : [],
+                                  momentId: journey?.momentId,
+                                  journeyId: journey?.id,
+                                  needId: need.id,
+                                  priority: need.priority,
+                                  lockNeed: true,
+                                });
+                                setAddFeatureOpen(true);
+                              }}
+                            >
+                              <Plus className="h-3.5 w-3.5" />
+                              Adicionar funcionalidade
+                            </Button>
                           </div>
                         ) : null}
                       </div>
@@ -920,6 +1138,7 @@ export function JornadasClient({
                   },
                 )
               )}
+              </div>
             </div>
           ) : null}
 

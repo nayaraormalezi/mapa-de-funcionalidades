@@ -9,12 +9,15 @@ import type {
   TemporalStatus,
 } from "@/types";
 
-/** Uma implementação = funcionalidade + público + momento + canal. */
+/** Uma implementação = funcionalidade + produto + público + momento + canal. */
 export type RoadmapImpl = {
   id: string;
   featureId: string;
   featureName: string;
   featureDescription: string;
+  productId: string;
+  productName: string;
+  productShortName: string;
   phase: RoadmapPhase;
   status: FeatureStatus;
   startDate: string | null;
@@ -186,6 +189,7 @@ export function groupByFeature(items: RoadmapImpl[]): {
   featureId: string;
   featureName: string;
   items: RoadmapImpl[];
+  productCount: number;
 }[] {
   const map = new Map<string, RoadmapImpl[]>();
   for (const item of items) {
@@ -197,11 +201,49 @@ export function groupByFeature(items: RoadmapImpl[]): {
     .map(([featureId, group]) => ({
       featureId,
       featureName: group[0]?.featureName ?? "",
+      productCount: new Set(group.map((i) => i.productId)).size,
       items: group
         .slice()
-        .sort((a, b) => a.channelName.localeCompare(b.channelName)),
+        .sort((a, b) => {
+          const p = a.productName.localeCompare(b.productName);
+          if (p !== 0) return p;
+          return a.channelName.localeCompare(b.channelName);
+        }),
     }))
     .sort((a, b) => a.featureName.localeCompare(b.featureName));
+}
+
+/** Agrupa Timeline: Funcionalidade → Produto → Canais. */
+export function groupByFeatureThenProduct(items: RoadmapImpl[]): {
+  featureId: string;
+  featureName: string;
+  products: {
+    productId: string;
+    productName: string;
+    productShortName: string;
+    items: RoadmapImpl[];
+  }[];
+}[] {
+  return groupByFeature(items).map((group) => {
+    const byProduct = new Map<string, RoadmapImpl[]>();
+    for (const item of group.items) {
+      const list = byProduct.get(item.productId) ?? [];
+      list.push(item);
+      byProduct.set(item.productId, list);
+    }
+    return {
+      featureId: group.featureId,
+      featureName: group.featureName,
+      products: Array.from(byProduct.entries())
+        .map(([productId, productItems]) => ({
+          productId,
+          productName: productItems[0]?.productName ?? "",
+          productShortName: productItems[0]?.productShortName ?? "",
+          items: productItems,
+        }))
+        .sort((a, b) => a.productName.localeCompare(b.productName)),
+    };
+  });
 }
 
 export type { EvolutionPhase, EvolutionStatus, FeatureEvolution };
