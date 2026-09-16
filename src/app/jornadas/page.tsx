@@ -2,7 +2,12 @@ import { JornadasClient } from "@/app/jornadas/jornadas-client";
 import { buildFeatureMapRows } from "@/services/channels";
 import { getDatabase } from "@/services/db";
 
-export default async function JornadasPage() {
+export default async function JornadasPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ journey?: string }>;
+}) {
+  const { journey: initialJourneyId } = await searchParams;
   const [db, rows] = await Promise.all([getDatabase(), buildFeatureMapRows()]);
 
   const catalogById = new Map(db.journeys.map((j) => [j.id, j]));
@@ -76,6 +81,7 @@ export default async function JornadasPage() {
           description: a.description,
         }))}
       products={products}
+      initialJourneyId={initialJourneyId}
     />
   );
 }

@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, Handshake, User, Users } from "lucide-react";
+import { Handshake, User, Users } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
 import { PageHeader, SurfaceCard } from "@/components/ui/prototype";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { AudienceCode } from "@/types";
 
@@ -29,14 +29,7 @@ export function TransformacaoAudienceGate({
         breadcrumb="Canais › Transformação"
         title="Atual → Futuro"
         description="Escolha o público para ver somente a transformação daquele perfil."
-        actions={
-          <Button asChild variant="outline" size="sm">
-            <Link href="/canais">
-              <ArrowLeft className="h-3.5 w-3.5" />
-              Voltar
-            </Link>
-          </Button>
-        }
+        actions={<BackButton href="/canais" />}
       />
 
       <SurfaceCard className="p-6">

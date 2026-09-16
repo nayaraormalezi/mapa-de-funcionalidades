@@ -3,23 +3,22 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import {
-  FilterChip,
+  FilterSelect,
   ProgressBar,
   SurfaceCard,
 } from "@/components/ui/prototype";
-import { DEVELOPMENT_STATUSES, FEATURE_STATUS_ORDER, priorityLabel } from "@/lib/labels";
+import { DEVELOPMENT_STAGES, FEATURE_STAGE_ORDER, FEATURE_STATUS_ORDER, featureStageLabel, featureStatusLabel, priorityLabel } from "@/lib/labels";
 import { cn, formatPercent } from "@/lib/utils";
 import type {
   CoverageItem,
   FeatureMapRow,
+  FeatureStage,
   FeatureStatus,
   Gap,
   Priority,
 } from "@/types";
 import {
-  CheckCircle2,
   ChevronRight,
-  Clock3,
   FileText,
   Handshake,
   RefreshCw,
@@ -30,7 +29,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { DashboardChannelTabs } from "./dashboard-channel-tabs";
-import { featureStatusLabel } from "@/lib/labels";
 
 type Option = { value: string; label: string };
 
@@ -50,18 +48,8 @@ type StatusSlice = {
   color: string;
 };
 
-const STATUS_COLORS: Record<FeatureStatus, string> = {
-  BACKLOG: "#3b82f6",
-  UX_UI: "#8b5cf6",
-  DEVELOPMENT: "#f59e0b",
-  HOMOLOGATION: "#a855f7",
-  PAUSED: "#06b6d4",
-  REMOVED: "#94a3b8",
-  AVAILABLE: "#22c55e",
-};
-
-const STATUS_TONE: Record<
-  FeatureStatus,
+const STAGE_TONE: Record<
+  FeatureStage,
   "default" | "success" | "warning" | "info" | "danger"
 > = {
   BACKLOG: "info",
@@ -73,17 +61,23 @@ const STATUS_TONE: Record<
   AVAILABLE: "success",
 };
 
+const STATUS_COLORS: Record<FeatureStatus, string> = {
+  ON_TRACK: "#22c55e",
+  DELAYED: "#ef4444",
+  NO_DEADLINE: "#94a3b8",
+};
+
 const PRIORITY_DOT: Record<Priority, string> = {
   CRITICAL: "bg-rose-500",
   HIGH: "bg-amber-500",
-  MEDIUM: "bg-sky-500",
+  MEDIUM: "bg-[var(--brand)]",
   LOW: "bg-slate-400",
 };
 
 const PRIORITY_BADGE: Record<Priority, string> = {
   CRITICAL: "bg-[#fee2e2] text-[#dc2626]",
   HIGH: "bg-[#fef3c7] text-[#d97706]",
-  MEDIUM: "bg-[#dbeafe] text-[#2563eb]",
+  MEDIUM: "bg-[#e6f0f7] text-[#005ca9]",
   LOW: "bg-slate-100 text-slate-600",
 };
 
@@ -113,13 +107,23 @@ function uniqueFeatures(rows: FeatureMapRow[]) {
   return new Set(rows.map((r) => r.featureId));
 }
 
-function bestFeatureStatus(statuses: FeatureStatus[]): FeatureStatus {
-  if (statuses.includes("AVAILABLE")) return "AVAILABLE";
-  const inDev = statuses.find((s) => DEVELOPMENT_STATUSES.includes(s));
+function bestFeatureStage(stages: FeatureStage[]): FeatureStage {
+  if (stages.includes("AVAILABLE")) return "AVAILABLE";
+  const inDev = stages.find((s) => DEVELOPMENT_STAGES.includes(s));
   if (inDev) return inDev;
-  if (statuses.includes("BACKLOG")) return "BACKLOG";
-  if (statuses.includes("PAUSED")) return "PAUSED";
-  return statuses[0] ?? "REMOVED";
+  if (stages.includes("BACKLOG")) return "BACKLOG";
+  if (stages.includes("PAUSED")) return "PAUSED";
+  return stages[0] ?? "REMOVED";
+}
+
+function featurePrimaryStages(rows: FeatureMapRow[]) {
+  const byFeature = new Map<string, FeatureStage[]>();
+  for (const row of rows) {
+    const list = byFeature.get(row.featureId) ?? [];
+    list.push(row.phase);
+    byFeature.set(row.featureId, list);
+  }
+  return Array.from(byFeature.values()).map(bestFeatureStage);
 }
 
 function featurePrimaryStatuses(rows: FeatureMapRow[]) {
@@ -129,7 +133,11 @@ function featurePrimaryStatuses(rows: FeatureMapRow[]) {
     list.push(row.status);
     byFeature.set(row.featureId, list);
   }
-  return Array.from(byFeature.values()).map(bestFeatureStatus);
+  return Array.from(byFeature.values()).map((statuses) => {
+    if (statuses.includes("DELAYED")) return "DELAYED";
+    if (statuses.includes("ON_TRACK")) return "ON_TRACK";
+    return statuses[0] ?? "NO_DEADLINE";
+  });
 }
 
 function coverageFor(
@@ -141,7 +149,7 @@ function coverageFor(
     const scoped = rows.filter((r) => r[key] === item.id);
     const total = uniqueFeatures(scoped).size;
     const available = uniqueFeatures(
-      scoped.filter((r) => r.status === "AVAILABLE"),
+      scoped.filter((r) => r.phase === "AVAILABLE"),
     ).size;
     return {
       id: item.id,
@@ -244,18 +252,18 @@ export function DashboardView({
   }, [channelTabs, audienceId]);
 
   const kpis = useMemo(() => {
-    const primaries = featurePrimaryStatuses(filteredRows);
-    const total = primaries.length || 1;
-    const byStatus = Object.fromEntries(
-      FEATURE_STATUS_ORDER.map((status) => [
-        status,
-        primaries.filter((s) => s === status).length,
+    const stages = featurePrimaryStages(filteredRows);
+    const total = stages.length || 1;
+    const byStage = Object.fromEntries(
+      FEATURE_STAGE_ORDER.map((stage) => [
+        stage,
+        stages.filter((s) => s === stage).length,
       ]),
-    ) as Record<FeatureStatus, number>;
+    ) as Record<FeatureStage, number>;
     const gapCount = filteredGaps.length;
     return {
-      total: primaries.length,
-      byStatus,
+      total: stages.length,
+      byStage,
       gaps: gapCount,
       gapsPct: (gapCount / total) * 100,
     };
@@ -293,8 +301,7 @@ export function DashboardView({
     }));
   }, [filteredRows]);
 
-  const statusTotal =
-    statusSlices.reduce((acc, s) => acc + s.count, 0) || 1;
+  const statusTotal = statusSlices.reduce((acc, s) => acc + s.count, 0) || 1;
 
   const donutGradient = statusSlices
     .filter((slice) => slice.count > 0)
@@ -330,34 +337,38 @@ export function DashboardView({
         </div>
       </div>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-        <div className="flex flex-wrap items-center gap-2">
-          <FilterChip
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
+        <div className="flex flex-wrap items-end gap-3">
+          <FilterSelect
             label="Público"
             value={audienceId}
             onChange={setAudienceId}
             options={[{ value: "", label: "Todos" }, ...audiences]}
+            className="min-w-[160px]"
           />
-          <FilterChip
+          <FilterSelect
             label="Momento"
             value={momentId}
             onChange={setMomentId}
             options={[{ value: "", label: "Todos" }, ...moments]}
+            className="min-w-[160px]"
           />
-          <FilterChip
+          <FilterSelect
             label="Produto"
             value={product}
             onChange={setProduct}
             options={[{ value: "", label: "Todos" }, ...products]}
+            className="min-w-[140px]"
           />
-          <FilterChip
+          <FilterSelect
             label="Período"
             value={period}
             onChange={setPeriod}
             options={periodOptions}
+            className="min-w-[140px]"
           />
         </div>
-        <p className="text-xs text-slate-500">
+        <p className="pb-2 text-xs text-slate-500">
           Última atualização: {updatedAtLabel}
         </p>
       </div>
@@ -381,24 +392,31 @@ export function DashboardView({
       </div>
 
       <div>
-        <div className="mb-3">
-          <h2 className="text-sm font-semibold text-slate-900">Status</h2>
-          <p className="mt-0.5 text-xs text-slate-500">
-            Distribuição das funcionalidades por status
-          </p>
+        <div className="mb-3 flex items-start justify-between gap-2">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-900">Etapa</h2>
+            <p className="mt-0.5 text-xs text-slate-500">
+              Distribuição das funcionalidades por etapa
+            </p>
+          </div>
+          <Link
+            href="/roadmap"
+            className="shrink-0 text-xs font-medium text-[var(--brand)] hover:underline"
+          >
+            Ver todos →
+          </Link>
         </div>
         <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-7">
-          {FEATURE_STATUS_ORDER.map((status) => {
-            const count = kpis.byStatus[status];
+          {FEATURE_STAGE_ORDER.map((stage) => {
+            const count = kpis.byStage[stage];
             const pct = kpis.total === 0 ? 0 : (count / kpis.total) * 100;
             return (
               <KpiCard
-                key={status}
-                icon={status === "AVAILABLE" ? CheckCircle2 : Clock3}
+                key={stage}
                 value={count}
-                label={featureStatusLabel[status]}
+                label={featureStageLabel[stage]}
                 hint={`${formatPercent(pct)}`}
-                tone={STATUS_TONE[status]}
+                tone={STAGE_TONE[stage]}
                 bar={pct}
               />
             );
@@ -451,10 +469,10 @@ export function DashboardView({
 
         <SurfaceCard className="p-5">
           <div className="mb-4">
-            <h2 className="text-sm font-semibold text-slate-900">
-              Status das funcionalidades
-            </h2>
-            <p className="mt-0.5 text-xs text-slate-500">Distribuição geral</p>
+            <h2 className="text-sm font-semibold text-slate-900">Status</h2>
+            <p className="mt-0.5 text-xs text-slate-500">
+              Situação de prazo das funcionalidades
+            </p>
           </div>
           <div className="flex items-center gap-5">
             <div
@@ -621,7 +639,7 @@ function KpiCard({
   tone,
   bar,
 }: {
-  icon: React.ComponentType<{ className?: string }>;
+  icon?: React.ComponentType<{ className?: string }>;
   value: number;
   label: string;
   hint?: string;
@@ -646,9 +664,9 @@ function KpiCard({
       hint: "text-amber-700",
     },
     info: {
-      icon: "bg-sky-50 text-sky-600",
-      bar: "bg-sky-500",
-      hint: "text-sky-700",
+      icon: "bg-[var(--brand-soft)] text-[var(--brand)]",
+      bar: "bg-[var(--brand)]",
+      hint: "text-[var(--brand)]",
     },
     danger: {
       icon: "bg-rose-50 text-rose-600",
@@ -679,14 +697,16 @@ function KpiCard({
             />
           ) : null}
         </div>
-        <div
-          className={cn(
-            "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
-            tones.icon,
-          )}
-        >
-          <Icon className="h-4 w-4" />
-        </div>
+        {Icon ? (
+          <div
+            className={cn(
+              "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
+              tones.icon,
+            )}
+          >
+            <Icon className="h-4 w-4" />
+          </div>
+        ) : null}
       </div>
     </SurfaceCard>
   );

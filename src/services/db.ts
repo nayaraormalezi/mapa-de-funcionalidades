@@ -11,6 +11,7 @@ import type {
   FeatureChannelContextRow,
   FeatureRow,
   GapRow,
+  FeatureEvolutionRow,
   JourneyAudienceStageRow,
   JourneyMomentRow,
   JourneyRow,
@@ -64,6 +65,7 @@ async function fetchFromSupabase(): Promise<DemoDatabase> {
     evidences,
     roadmapPhases,
     roadmapItems,
+    featureEvolutions,
     gaps,
   ] = await Promise.all([
     supabase.from("audiences").select("*").eq("active", true).order("name"),
@@ -92,8 +94,17 @@ async function fetchFromSupabase(): Promise<DemoDatabase> {
       .eq("active", true)
       .order("sort_order"),
     supabase.from("roadmap_items").select("*").eq("active", true),
+    supabase.from("feature_evolutions").select("*").eq("active", true),
     supabase.from("gaps").select("*").eq("active", true).order("priority"),
   ]);
+
+  const evolutionError =
+    featureEvolutions.error &&
+    !/relation .*feature_evolutions.* does not exist|Could not find the table/i.test(
+      featureEvolutions.error.message,
+    )
+      ? featureEvolutions.error
+      : null;
 
   const errors = [
     audiences.error,
@@ -110,6 +121,7 @@ async function fetchFromSupabase(): Promise<DemoDatabase> {
     evidences.error,
     roadmapPhases.error,
     roadmapItems.error,
+    evolutionError,
     gaps.error,
   ].filter(Boolean);
 
@@ -134,6 +146,9 @@ async function fetchFromSupabase(): Promise<DemoDatabase> {
     evidences: (evidences.data ?? []) as EvidenceRow[],
     roadmapPhases: (roadmapPhases.data ?? []) as RoadmapPhaseRow[],
     roadmapItems: (roadmapItems.data ?? []) as RoadmapItemRow[],
+    featureEvolutions: (featureEvolutions.error
+      ? []
+      : (featureEvolutions.data ?? [])) as FeatureEvolutionRow[],
     gaps: (gaps.data ?? []) as GapRow[],
   });
 }

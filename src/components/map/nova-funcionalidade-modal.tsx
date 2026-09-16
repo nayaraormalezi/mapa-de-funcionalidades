@@ -280,9 +280,9 @@ export function NovaFuncionalidadeModal({
         <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
           {step === 1 ? (
             <>
-              <div className="flex gap-3 rounded-xl border border-sky-100 bg-sky-50 px-4 py-3">
-                <Lightbulb className="mt-0.5 h-4 w-4 shrink-0 text-sky-700" />
-                <p className="text-sm leading-relaxed text-sky-900/90">
+              <div className="flex gap-3 rounded-xl border border-[var(--brand-ring)] bg-[var(--brand-soft)] px-4 py-3">
+                <Lightbulb className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brand)]" />
+                <p className="text-sm leading-relaxed text-[var(--brand)]/90">
                   Antes de criar, responda: quem é o usuário, o que ele precisa
                   fazer e em qual momento da jornada isso acontece?
                 </p>

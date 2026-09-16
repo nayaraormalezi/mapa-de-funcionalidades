@@ -8,6 +8,7 @@ import {
   upsertJourneyAudienceStage,
 } from "@/app/actions/crud";
 import { Button } from "@/components/ui/button";
+import { BackButton } from "@/components/ui/back-button";
 import {
   PageHeader,
   SurfaceCard,
@@ -15,7 +16,7 @@ import {
 } from "@/components/ui/prototype";
 import { cn } from "@/lib/utils";
 import type { JourneyAudienceStage } from "@/types";
-import { ArrowLeft, Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 
 type Option = { value: string; label: string };
 
@@ -146,12 +147,7 @@ export function EditarJornadasClient({
         description="Customize as etapas desta jornada por momento. O catálogo de etapas é compartilhado; o nome e a ordem podem variar por público."
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <Button asChild variant="outline" size="sm">
-              <Link href="/jornadas">
-                <ArrowLeft className="h-3.5 w-3.5" />
-                Voltar
-              </Link>
-            </Button>
+            <BackButton href="/jornadas" />
             <Button asChild variant="ghost" size="sm">
               <Link href="/cadastros/jornadas">Catálogo global</Link>
             </Button>

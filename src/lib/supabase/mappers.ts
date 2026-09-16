@@ -1,5 +1,9 @@
 import type { DemoDatabase } from "@/types";
-import { normalizeFeatureStatus } from "@/lib/labels";
+import {
+  deriveDeadlineStatus,
+  normalizeDeadlineStatus,
+  normalizeFeatureStage,
+} from "@/lib/labels";
 
 /** Snake_case DB row shapes (Supabase). */
 export type AudienceRow = {
@@ -183,6 +187,24 @@ export type GapRow = {
   active: boolean;
 };
 
+export type FeatureEvolutionRow = {
+  id: string;
+  feature_channel_context_id: string;
+  title: string;
+  description: string;
+  phase: string;
+  status: string;
+  priority: string;
+  start_date: string | null;
+  expected_date: string | null;
+  completed_date: string | null;
+  responsible: string;
+  notes: string;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
 export function mapDatabase(rows: {
   audiences: AudienceRow[];
   moments: MomentRow[];
@@ -198,6 +220,7 @@ export function mapDatabase(rows: {
   evidences: EvidenceRow[];
   roadmapPhases?: RoadmapPhaseRow[];
   roadmapItems: RoadmapItemRow[];
+  featureEvolutions?: FeatureEvolutionRow[];
   gaps: GapRow[];
 }): DemoDatabase {
   const momentIdsByJourney = new Map<string, string[]>();
@@ -299,7 +322,12 @@ export function mapDatabase(rows: {
       updatedAt: c.updated_at,
     })),
     featureChannelContexts: rows.featureChannelContexts.map((f) => {
-      const status = normalizeFeatureStatus(f.status || f.phase);
+      const phase = normalizeFeatureStage(f.phase || f.status);
+      const statusRaw = f.status || "";
+      const status =
+        statusRaw in { ON_TRACK: 1, DELAYED: 1, NO_DEADLINE: 1 }
+          ? normalizeDeadlineStatus(statusRaw)
+          : deriveDeadlineStatus(f.expected_date, phase);
       return {
         id: f.id,
         featureId: f.feature_id,
@@ -307,7 +335,7 @@ export function mapDatabase(rows: {
         status,
         experience:
           f.experience as DemoDatabase["featureChannelContexts"][number]["experience"],
-        phase: normalizeFeatureStatus(f.phase || f.status),
+        phase,
         startDate: f.start_date,
         expectedDate: f.expected_date,
         launchDate: f.launch_date,
@@ -344,12 +372,35 @@ export function mapDatabase(rows: {
       id: r.id,
       featureId: r.feature_id,
       channelContextId: r.channel_context_id,
-      phase: normalizeFeatureStatus(r.phase),
+      phase: normalizeFeatureStage(r.phase),
       startDate: r.start_date,
       expectedDate: r.expected_date,
       actualDate: r.actual_date,
       responsible: r.responsible,
       notes: r.notes,
+    })),
+    featureEvolutions: (rows.featureEvolutions ?? []).map((e) => ({
+      id: e.id,
+      featureChannelContextId: e.feature_channel_context_id,
+      title: e.title,
+      description: e.description ?? "",
+      phase: (["BACKLOG", "UX_UI", "DEVELOPMENT", "HOMOLOGATION", "DONE"].includes(
+        e.phase,
+      )
+        ? e.phase
+        : "BACKLOG") as DemoDatabase["featureEvolutions"][number]["phase"],
+      status: (["IN_PROGRESS", "DONE", "CANCELLED", "PAUSED"].includes(e.status)
+        ? e.status
+        : "IN_PROGRESS") as DemoDatabase["featureEvolutions"][number]["status"],
+      priority: e.priority as DemoDatabase["featureEvolutions"][number]["priority"],
+      startDate: e.start_date,
+      expectedDate: e.expected_date,
+      completedDate: e.completed_date,
+      responsible: e.responsible ?? "",
+      notes: e.notes ?? "",
+      active: e.active !== false,
+      createdAt: e.created_at,
+      updatedAt: e.updated_at,
     })),
     gaps: rows.gaps.map((g) => ({
       id: g.id,

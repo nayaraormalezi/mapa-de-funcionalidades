@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 import type { AudienceCode } from "@/types";
 
 const styles: Record<AudienceCode, string> = {
-  CLIENT: "bg-blue-50 text-blue-900 ring-blue-200",
+  CLIENT: "bg-[var(--brand-soft)] text-[var(--brand)] ring-[var(--brand-ring)]",
   ECONOMIARIO: "bg-teal-50 text-teal-900 ring-teal-200",
   PARTNER: "bg-amber-50 text-amber-950 ring-amber-200",
 };

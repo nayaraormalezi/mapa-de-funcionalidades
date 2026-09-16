@@ -219,6 +219,7 @@ export function JornadasClient({
   rows,
   audiences,
   products,
+  initialJourneyId,
 }: {
   journeyStages: JourneyStep[];
   needs: Need[];
@@ -232,8 +233,14 @@ export function JornadasClient({
     description?: string;
   }[];
   products: string[];
+  initialJourneyId?: string;
 }) {
+  const stageForInitial = initialJourneyId
+    ? journeyStages.find((s) => s.id === initialJourneyId)
+    : undefined;
+
   const defaultAudience =
+    stageForInitial?.audienceId ??
     audiences.find((a) => a.code === "CLIENT" || /cliente/i.test(a.name))
       ?.id ??
     audiences[0]?.id ??
@@ -255,8 +262,11 @@ export function JornadasClient({
   );
 
   const defaultJourney =
-    journeys.find((j) => j.id === "jrn-acompanhamento")?.id ??
-    journeys[0]?.id ??
+    (initialJourneyId &&
+      journeys.some((j) => j.id === initialJourneyId) &&
+      initialJourneyId) ||
+    journeys.find((j) => j.id === "jrn-acompanhamento")?.id ||
+    journeys[0]?.id ||
     "";
 
   const [journeyId, setJourneyId] = useState(defaultJourney);
@@ -317,7 +327,7 @@ export function JornadasClient({
         available: new Set<string>(),
       };
       entry.total.add(row.featureId);
-      if (row.status === "AVAILABLE") entry.available.add(row.featureId);
+      if (row.phase === "AVAILABLE") entry.available.add(row.featureId);
       map.set(row.channelId, entry);
     }
     return Array.from(map.entries())
@@ -346,6 +356,7 @@ export function JornadasClient({
           featureId: string;
           featureName: string;
           status: FeatureMapRow["status"];
+          phase: FeatureMapRow["phase"];
           channels: string[];
         }
       >();
@@ -360,6 +371,7 @@ export function JornadasClient({
             featureId: row.featureId,
             featureName: row.featureName,
             status: row.status,
+            phase: row.phase,
             channels: [row.channelName],
           });
         }
@@ -368,7 +380,7 @@ export function JornadasClient({
         a.featureName.localeCompare(b.featureName, "pt-BR"),
       );
       const total = features.length;
-      const available = features.filter((f) => f.status === "AVAILABLE").length;
+      const available = features.filter((f) => f.phase === "AVAILABLE").length;
       const pct = total === 0 ? 0 : (available / total) * 100;
       return { need, total, available, pct, features };
     });
@@ -378,7 +390,7 @@ export function JornadasClient({
     () =>
       new Set(
         journeyRows
-          .filter((r) => r.status === "AVAILABLE")
+          .filter((r) => r.phase === "AVAILABLE")
           .map((r) => r.featureId),
       ).size,
     [journeyRows],
@@ -394,7 +406,7 @@ export function JornadasClient({
               "DEVELOPMENT",
               "HOMOLOGATION",
               "PAUSED",
-            ].includes(r.status),
+            ].includes(r.phase),
           )
           .map((r) => r.featureId),
       ).size,
@@ -583,8 +595,8 @@ export function JornadasClient({
               </div>
             </div>
           </div>
-          <div className="relative max-w-md rounded-2xl border border-[#cfe3f5] bg-[#e8f1fa] px-4 py-3 text-sm leading-relaxed text-[#0f3d6e] italic">
-            <span className="absolute -left-1.5 top-4 h-3 w-3 rotate-45 border-b border-l border-[#cfe3f5] bg-[#e8f1fa]" />
+          <div className="relative max-w-md rounded-2xl border border-[#b3d4eb] bg-[#e6f0f7] px-4 py-3 text-sm leading-relaxed text-[#005ca9] italic">
+            <span className="absolute -left-1.5 top-4 h-3 w-3 rotate-45 border-b border-l border-[#b3d4eb] bg-[#e6f0f7]" />
             &quot;{meta.quote}&quot;
           </div>
         </div>
@@ -775,7 +787,7 @@ export function JornadasClient({
                       </p>
                     ) : null}
                   </div>
-                  <p className="mt-4 flex gap-2 rounded-lg bg-[var(--brand-soft)] px-3 py-2.5 text-xs text-[#0f3d6e]">
+                  <p className="mt-4 flex gap-2 rounded-lg bg-[var(--brand-soft)] px-3 py-2.5 text-xs text-[#005ca9]">
                     <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                     O SuperApp concentrará as funcionalidades dos canais
                     atuais, proporcionando uma experiência mais simples e

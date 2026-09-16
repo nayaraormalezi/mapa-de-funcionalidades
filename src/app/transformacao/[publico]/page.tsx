@@ -52,12 +52,14 @@ export default async function TransformacaoPublicoPage({
           momentId: current.momentId,
           channelId: current.channelId,
           status: current.status,
+          phase: current.phase,
         },
         future: future
           ? {
               featureChannelContextId: future.featureChannelContextId,
               channelName: future.channelName,
               status: future.status,
+              phase: future.phase,
               channelId: future.channelId,
             }
           : null,

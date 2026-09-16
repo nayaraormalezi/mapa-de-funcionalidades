@@ -47,6 +47,18 @@ export async function getFeatureRoadmap(
   );
 }
 
+export async function getFeatureEvolutions(featureId: string) {
+  const db = await getDatabase();
+  const fccIds = new Set(
+    db.featureChannelContexts
+      .filter((f) => f.featureId === featureId)
+      .map((f) => f.id),
+  );
+  return db.featureEvolutions.filter(
+    (e) => e.active && fccIds.has(e.featureChannelContextId),
+  );
+}
+
 export async function getFeatureGaps(featureId: string): Promise<Gap[]> {
   return (await getDatabase()).gaps.filter((g) => g.featureId === featureId);
 }

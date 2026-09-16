@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import {
+  featureStageOptions,
   featureStatusOptions,
   experienceLabel,
   priorityLabel,
@@ -136,10 +137,16 @@ export function FilterBar({
           onToggle={(v) => onToggle("temporalStatuses", v)}
         />
         <MultiSelectChips
-          label="Status da funcionalidade"
+          label="Status"
           options={featureStatusOptions()}
           selected={filters.statuses}
           onToggle={(v) => onToggle("statuses", v)}
+        />
+        <MultiSelectChips
+          label="Etapa"
+          options={featureStageOptions()}
+          selected={filters.phases}
+          onToggle={(v) => onToggle("phases", v)}
         />
         <MultiSelectChips
           label="Experiência"

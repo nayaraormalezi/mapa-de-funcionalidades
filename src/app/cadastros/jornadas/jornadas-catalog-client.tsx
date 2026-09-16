@@ -5,6 +5,7 @@ import Link from "next/link";
 import { upsertJourney } from "@/app/actions/crud";
 import { ArchiveButton } from "@/components/cadastros/row-actions";
 import { CrudForm, Field } from "@/components/cadastros/crud-form";
+import { BackButton } from "@/components/ui/back-button";
 import { Button } from "@/components/ui/button";
 import {
   PageHeader,
@@ -103,11 +104,7 @@ export function JornadasCatalogClient({
         breadcrumb="Cadastros › Jornadas"
         title="Catálogo global de jornadas"
         description="Sitemap das etapas compartilhadas. Use o catálogo para cruzar jornadas entre Cliente, Economiário e Parceiro — a mesma etapa pode aparecer com nomes diferentes em cada público."
-        actions={
-          <Button asChild variant="outline" size="sm">
-            <Link href="/jornadas">Voltar às jornadas</Link>
-          </Button>
-        }
+        actions={<BackButton href="/jornadas" />}
       />
 
       <SurfaceCard className="p-4">

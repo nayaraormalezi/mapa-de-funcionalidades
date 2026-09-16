@@ -20,18 +20,18 @@ import type { Gap, GapStatus, GapType, Priority } from "@/types";
 import { MoreHorizontal, Plus, ShieldAlert } from "lucide-react";
 
 const TYPE_COLORS: Record<GapType, string> = {
-  COVERAGE: "#145fab",
+  COVERAGE: "#005ca9",
   EXPERIENCE: "#b26f9b",
-  CONSISTENCY: "#00b5e5",
+  CONSISTENCY: "#005ca9",
   INFORMATION: "#667085",
   OPERATIONAL: "#f39300",
   TRANSITION: "#ef765e",
 };
 
 const TYPE_BADGE: Record<GapType, string> = {
-  COVERAGE: "bg-[#e8f1fa] text-[#145fab] ring-[#cfe3f5]",
+  COVERAGE: "bg-[#e6f0f7] text-[#005ca9] ring-[#b3d4eb]",
   EXPERIENCE: "bg-[#f8eef5] text-[#b26f9b] ring-[#e8c9dc]",
-  CONSISTENCY: "bg-[#cff0fb] text-[#006d8f] ring-[#b9e8f5]",
+  CONSISTENCY: "bg-[#e6f0f7] text-[#005ca9] ring-[#b3d4eb]",
   INFORMATION: "bg-slate-50 text-slate-700 ring-slate-200",
   OPERATIONAL: "bg-[#fef0d4] text-[#98522d] ring-[#fde8c8]",
   TRANSITION: "bg-[#fce5df] text-[#8c2f1e] ring-[#fce5df]",
@@ -443,7 +443,7 @@ export function GapsClient({
                         : item.priority === "HIGH"
                           ? "bg-amber-500"
                           : item.priority === "MEDIUM"
-                            ? "bg-sky-500"
+                            ? "bg-[var(--brand)]"
                             : "bg-slate-400"
                     }
                   />

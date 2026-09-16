@@ -4,38 +4,99 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
-  Bell,
-  FileBarChart2,
+  BarChart3,
+  BookOpen,
+  ChevronsLeft,
+  ChevronsRight,
+  Clock3,
   GitBranch,
-  LayoutDashboard,
+  Home,
+  Layers,
   Lightbulb,
   LogOut,
-  Map,
   Menu,
   Radio,
   Route,
-  Search,
   Settings,
-  ShieldAlert,
   X,
+  ChevronDown,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/components/auth/auth-provider";
 import { logoutAction } from "@/app/actions/auth";
+import { CaixaConsorcioLogo } from "@/components/brand/caixa-consorcio-logo";
+import {
+  GlobalSearchBar,
+  type GlobalSearchItem,
+} from "@/components/layout/global-search";
 
-const primaryNav = [
-  { href: "/dashboard", label: "Visão geral", icon: LayoutDashboard },
-  { href: "/mapa", label: "Mapa de funcionalidades", icon: Map },
-  { href: "/jornadas", label: "Jornadas", icon: Route },
-  { href: "/roadmap", label: "Roadmap", icon: GitBranch },
-  { href: "/gaps", label: "Gaps & oportunidades", icon: ShieldAlert },
-];
+type NavBadge = { type: "count"; value: number } | { type: "new" };
 
-const secondaryNav = [
-  { href: "/canais", label: "Canais", icon: Radio },
-  { href: "/relatorios", label: "Relatórios", icon: FileBarChart2 },
-  { href: "/configuracoes", label: "Configurações", icon: Settings },
+type NavItem = {
+  href: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  badge?: NavBadge;
+};
+
+type NavSection = {
+  id: string;
+  label: string;
+  items: NavItem[];
+};
+
+const navSections = (gapsBadgeCount: number): NavSection[] => [
+  {
+    id: "principal",
+    label: "Principal",
+    items: [
+      { href: "/dashboard", label: "Visão geral", icon: Home },
+      { href: "/mapa", label: "Mapa de funcionalidades", icon: BookOpen },
+      { href: "/jornadas", label: "Jornadas", icon: Route },
+      { href: "/roadmap", label: "Roadmap", icon: GitBranch },
+      {
+        href: "/gaps",
+        label: "Gaps & oportunidades",
+        icon: Lightbulb,
+        badge:
+          gapsBadgeCount > 0
+            ? { type: "count", value: gapsBadgeCount }
+            : undefined,
+      },
+    ],
+  },
+  {
+    id: "ecossistema",
+    label: "Ecossistema",
+    items: [
+      { href: "/canais", label: "Canais", icon: Radio },
+      {
+        href: "/produtos",
+        label: "Produtos",
+        icon: Layers,
+        badge: { type: "new" },
+      },
+    ],
+  },
+  {
+    id: "analises",
+    label: "Análises",
+    items: [
+      { href: "/relatorios", label: "Relatórios", icon: BarChart3 },
+      {
+        href: "/inteligencia",
+        label: "Insights",
+        icon: Clock3,
+        badge: { type: "new" },
+      },
+    ],
+  },
+  {
+    id: "administracao",
+    label: "Administração",
+    items: [{ href: "/configuracoes", label: "Configurações", icon: Settings }],
+  },
 ];
 
 const roleLabel: Record<string, string> = {
@@ -54,48 +115,110 @@ function initials(name: string | null | undefined) {
     .join("");
 }
 
+function NavBadgeView({ badge, collapsed }: { badge: NavBadge; collapsed?: boolean }) {
+  if (badge.type === "count") {
+    if (badge.value <= 0) return null;
+    return (
+      <span
+        className={cn(
+          "inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[#4a8fc4] px-1.5 text-[10px] font-semibold text-white",
+          collapsed && "absolute -top-1 -right-1 h-4 min-w-4 px-1",
+        )}
+      >
+        {badge.value > 99 ? "99+" : badge.value}
+      </span>
+    );
+  }
+
+  return (
+    <span
+      className={cn(
+        "rounded-md bg-[#4a8fc4] px-1.5 py-0.5 text-[9px] font-semibold tracking-wide text-white uppercase",
+        collapsed && "absolute -top-1 -right-1 px-1 text-[8px]",
+      )}
+    >
+      Novo
+    </span>
+  );
+}
+
 function NavLink({
   href,
   label,
   icon: Icon,
   active,
+  badge,
+  collapsed,
   onNavigate,
 }: {
   href: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   active: boolean;
+  badge?: NavBadge;
+  collapsed: boolean;
   onNavigate: () => void;
 }) {
   return (
     <Link
       href={href}
       onClick={onNavigate}
+      title={collapsed ? label : undefined}
       className={cn(
-        "relative flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-[13px] transition-colors",
+        "relative flex items-center gap-2.5 rounded-lg text-[13px] transition-colors",
+        collapsed ? "justify-center px-2 py-2.5" : "px-3 py-2.5",
         active
-          ? "bg-[var(--sidebar-active)] font-medium text-white"
-          : "text-white/70 hover:bg-white/5 hover:text-white",
+          ? "bg-white/15 font-medium text-white"
+          : "text-white/75 hover:bg-white/8 hover:text-white",
       )}
     >
       {active ? (
         <span className="absolute top-1/2 left-0 h-6 w-1 -translate-y-1/2 rounded-r bg-[var(--sidebar-accent-bar)]" />
       ) : null}
-      <Icon className="h-4 w-4 shrink-0 opacity-90" />
-      <span className="leading-tight">{label}</span>
+      <span className="relative shrink-0">
+        <Icon className="h-4 w-4 opacity-90" />
+        {collapsed && badge ? <NavBadgeView badge={badge} collapsed /> : null}
+      </span>
+      {!collapsed ? (
+        <>
+          <span className="min-w-0 flex-1 leading-tight">{label}</span>
+          {badge ? <NavBadgeView badge={badge} /> : null}
+        </>
+      ) : null}
     </Link>
   );
 }
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({
+  children,
+  gapsBadgeCount = 0,
+  searchItems = [],
+}: {
+  children: React.ReactNode;
+  gapsBadgeCount?: number;
+  searchItems?: GlobalSearchItem[];
+}) {
   const pathname = usePathname();
-  const [open, setOpen] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const auth = useAuth();
+  const sections = useMemo(
+    () => navSections(gapsBadgeCount),
+    [gapsBadgeCount],
+  );
 
   const displayName = useMemo(
     () => auth.profile?.fullName?.trim() || auth.email || "Usuário",
     [auth.profile?.fullName, auth.email],
   );
+
+  const shortName = useMemo(() => {
+    const role = roleLabel[auth.role] ?? auth.role;
+    if (auth.role === "admin") return "Admin";
+    const first = displayName.split(/\s+/)[0];
+    return first || role;
+  }, [auth.role, displayName]);
 
   if (pathname === "/login" || pathname.startsWith("/auth/")) {
     return <>{children}</>;
@@ -107,65 +230,144 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       : pathname === href || pathname.startsWith(`${href}/`);
   }
 
+  const sidebarWidth = collapsed ? "w-[72px]" : "w-[240px]";
+
   return (
-    <div className="flex min-h-screen bg-[var(--background)] text-[var(--foreground)]">
+    <div className="flex h-dvh overflow-hidden bg-[var(--background)] text-[var(--foreground)]">
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex w-[212px] flex-col bg-[var(--sidebar)] text-[var(--sidebar-foreground)] transition-transform lg:static lg:translate-x-0",
-          open ? "translate-x-0" : "-translate-x-full",
+          "fixed inset-y-0 left-0 z-50 flex flex-col bg-[var(--sidebar)] text-[var(--sidebar-foreground)] transition-[width,transform] duration-200 lg:static lg:translate-x-0",
+          sidebarWidth,
+          mobileOpen ? "translate-x-0" : "-translate-x-full",
         )}
       >
-        <div className="px-4 pt-5 pb-4">
-          <p className="text-[15px] leading-tight font-bold tracking-tight text-white">
-            CAIXA{" "}
-            <span className="font-semibold text-[#f4c542]">Consórcio</span>
-          </p>
-          <p className="mt-1.5 text-[11px] leading-snug text-white/55">
-            Mapa de Funcionalidades
-            <br />
-            UX + CX
-          </p>
+        <div
+          className={cn(
+            "border-b border-white/10 py-4",
+            collapsed
+              ? "flex flex-col items-center gap-2 px-2"
+              : "flex items-center gap-2 px-4",
+          )}
+        >
+          {collapsed ? (
+            <CaixaConsorcioLogo compact />
+          ) : (
+            <div className="min-w-0 flex-1">
+              <CaixaConsorcioLogo />
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => setCollapsed((v) => !v)}
+            className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#004785] text-white hover:bg-[#003f75] lg:inline-flex"
+            aria-label={collapsed ? "Expandir menu" : "Recolher menu"}
+          >
+            {collapsed ? (
+              <ChevronsRight className="h-4 w-4" />
+            ) : (
+              <ChevronsLeft className="h-4 w-4" />
+            )}
+          </button>
         </div>
 
-        <nav className="flex-1 space-y-0.5 overflow-y-auto px-2.5 py-2">
-          {primaryNav.map((item) => (
-            <NavLink
-              key={item.href}
-              {...item}
-              active={isActive(item.href)}
-              onNavigate={() => setOpen(false)}
-            />
-          ))}
-          <div className="my-3 border-t border-white/10" />
-          {secondaryNav.map((item) => (
-            <NavLink
-              key={item.href}
-              {...item}
-              active={isActive(item.href)}
-              onNavigate={() => setOpen(false)}
-            />
+        <nav className="flex-1 space-y-4 overflow-y-auto px-2.5 py-3">
+          {sections.map((section, index) => (
+            <div key={section.id}>
+              {index > 0 ? (
+                <div className="mb-3 border-t border-white/10" />
+              ) : null}
+              {!collapsed ? (
+                <p className="mb-1.5 px-3 text-[10px] font-semibold tracking-[0.14em] text-white/45 uppercase">
+                  {section.label}
+                </p>
+              ) : null}
+              <div className="space-y-0.5">
+                {section.items.map((item) => (
+                  <NavLink
+                    key={item.href}
+                    {...item}
+                    active={isActive(item.href)}
+                    collapsed={collapsed}
+                    onNavigate={() => setMobileOpen(false)}
+                  />
+                ))}
+              </div>
+            </div>
           ))}
         </nav>
 
-        <div className="p-3">
-          <div className="rounded-xl border border-white/10 bg-white/5 p-3.5">
-            <div className="mb-2 flex h-8 w-8 items-center justify-center rounded-lg bg-white/10">
-              <Lightbulb className="h-4 w-4 text-[var(--sidebar-accent-bar)]" />
+        <div className="relative border-t border-white/10 p-2.5">
+          <button
+            type="button"
+            onClick={() => setProfileOpen((v) => !v)}
+            className={cn(
+              "flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left transition-colors hover:bg-white/8",
+              collapsed && "justify-center px-0",
+            )}
+          >
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#4a8fc4] text-xs font-semibold text-white">
+              {initials(displayName)}
             </div>
-            <p className="text-xs font-semibold text-white">Mais integração</p>
-            <p className="mt-1 text-[11px] leading-relaxed text-white/50">
-              Mais possibilidades para os nossos clientes.
-            </p>
-          </div>
+            {!collapsed ? (
+              <>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-white">
+                    {shortName}
+                  </p>
+                  <p className="truncate text-[11px] text-white/55">
+                    CAIXA Consórcio
+                  </p>
+                </div>
+                <ChevronDown
+                  className={cn(
+                    "h-4 w-4 shrink-0 text-white/60 transition-transform",
+                    profileOpen && "rotate-180",
+                  )}
+                />
+              </>
+            ) : null}
+          </button>
+
+          {profileOpen ? (
+            <div
+              className={cn(
+                "absolute bottom-[calc(100%+6px)] z-10 min-w-[180px] rounded-xl border border-white/10 bg-[#004785] p-1.5 shadow-lg",
+                collapsed ? "left-2" : "right-2.5 left-2.5",
+              )}
+            >
+              <Link
+                href="/configuracoes"
+                onClick={() => {
+                  setProfileOpen(false);
+                  setMobileOpen(false);
+                }}
+                className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-white/85 hover:bg-white/10"
+              >
+                <Settings className="h-3.5 w-3.5" />
+                Configurações
+              </Link>
+              {auth.supabaseEnabled ? (
+                <form action={logoutAction}>
+                  <button
+                    type="submit"
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-white/85 hover:bg-white/10"
+                  >
+                    <LogOut className="h-3.5 w-3.5" />
+                    Sair
+                  </button>
+                </form>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </aside>
 
-      {open ? (
+      {mobileOpen ? (
         <button
           type="button"
           className="fixed inset-0 z-40 bg-slate-950/40 lg:hidden"
           aria-label="Fechar menu"
-          onClick={() => setOpen(false)}
+          onClick={() => setMobileOpen(false)}
         />
       ) : null}
 
@@ -175,60 +377,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             type="button"
             variant="ghost"
             size="icon"
-            className="lg:hidden"
-            onClick={() => setOpen((v) => !v)}
+            className="shrink-0 lg:hidden"
+            onClick={() => setMobileOpen((v) => !v)}
             aria-label="Abrir menu"
           >
-            {open ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+            {mobileOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
           </Button>
 
-          <div className="relative mx-auto hidden w-full max-w-xl flex-1 md:block">
-            <Search className="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input
-              type="search"
-              placeholder="Buscar funcionalidades, jornadas, canais..."
-              className="h-10 w-full rounded-full border border-[var(--border)] bg-[#f5f5f5] pr-4 pl-10 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:ring-2 focus:ring-[var(--brand-ring)]"
-            />
-          </div>
-
-          <div className="ml-auto flex items-center gap-2 md:gap-3">
-            <button
-              type="button"
-              className="relative rounded-full p-2 text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
-              aria-label="Notificações"
-            >
-              <Bell className="h-4 w-4" />
-              <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-rose-500" />
-            </button>
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--brand)] text-xs font-semibold text-white">
-                {initials(displayName)}
-              </div>
-              <div className="hidden text-left sm:block">
-                <p className="max-w-[140px] truncate text-sm font-medium leading-tight text-slate-900">
-                  {displayName}
-                </p>
-                <p className="text-[11px] text-[var(--muted-foreground)]">
-                  {roleLabel[auth.role] ?? auth.role} | CAIXA Consórcio
-                </p>
-              </div>
-              {auth.supabaseEnabled ? (
-                <form action={logoutAction}>
-                  <Button
-                    type="submit"
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Sair"
-                  >
-                    <LogOut className="h-4 w-4" />
-                  </Button>
-                </form>
-              ) : null}
-            </div>
-          </div>
+          <GlobalSearchBar items={searchItems} />
         </header>
 
-        <main className="min-w-0 flex-1 overflow-x-auto p-5 md:p-6 lg:p-8">
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto p-5 md:p-6 lg:p-8">
           {children}
         </main>
       </div>

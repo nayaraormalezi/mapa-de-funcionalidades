@@ -94,7 +94,7 @@ function ChannelPills({
             "rounded-md px-2.5 py-1.5 text-xs font-medium",
             tone === "current"
               ? "bg-[#f3f4f6] text-slate-700"
-              : "bg-[#dbeafe] text-[#145fab]",
+              : "bg-[#e6f0f7] text-[#005ca9]",
           )}
         >
           {name}

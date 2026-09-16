@@ -48,6 +48,7 @@ function channelStatusLabel(row: ChannelContextRow) {
 export function CanaisClient({
   contexts,
   audiences,
+  initialChannelId,
 }: {
   contexts: ChannelContextRow[];
   audiences: {
@@ -56,8 +57,14 @@ export function CanaisClient({
     code: AudienceCode;
     description?: string;
   }[];
+  initialChannelId?: string;
 }) {
+  const contextForInitial = initialChannelId
+    ? contexts.find((c) => c.channelId === initialChannelId)
+    : undefined;
+
   const defaultAudience =
+    contextForInitial?.audienceId ??
     audiences.find((a) => a.code === "CLIENT" || /cliente/i.test(a.name))
       ?.id ??
     audiences[0]?.id ??
@@ -85,7 +92,9 @@ export function CanaisClient({
     return audienceContexts;
   }, [audienceContexts, tab]);
 
-  const [selectedId, setSelectedId] = useState(filtered[0]?.id ?? "");
+  const [selectedId, setSelectedId] = useState(
+    contextForInitial?.id ?? filtered[0]?.id ?? "",
+  );
 
   const selected =
     filtered.find((c) => c.id === selectedId) ??
@@ -409,10 +418,10 @@ export function CanaisClient({
           </SurfaceCard>
 
           <SurfaceCard className="border-[var(--brand)]/20 bg-[var(--brand-soft)] p-4">
-            <p className="text-sm font-semibold text-[#0f3d6e]">
+            <p className="text-sm font-semibold text-[#005ca9]">
               Evolução dos canais
             </p>
-            <p className="mt-1 text-xs text-[#145fab]/90">
+            <p className="mt-1 text-xs text-[#005ca9]/90">
               Acompanhe a transição dos canais atuais para o futuro e entenda o
               impacto na experiência do usuário.
             </p>

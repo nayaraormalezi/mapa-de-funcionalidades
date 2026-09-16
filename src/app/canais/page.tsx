@@ -2,7 +2,12 @@ import { CanaisClient } from "@/app/canais/canais-client";
 import { buildFeatureMapRows } from "@/services/channels";
 import { getDatabase } from "@/services/db";
 
-export default async function CanaisPage() {
+export default async function CanaisPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ channel?: string }>;
+}) {
+  const { channel: initialChannelId } = await searchParams;
   const [db, rows] = await Promise.all([getDatabase(), buildFeatureMapRows()]);
 
   const audiences = new Map(db.audiences.map((a) => [a.id, a]));
@@ -19,7 +24,7 @@ export default async function CanaisPage() {
       available: new Set<string>(),
     };
     entry.total.add(row.featureId);
-    if (row.status === "AVAILABLE") entry.available.add(row.featureId);
+    if (row.phase === "AVAILABLE") entry.available.add(row.featureId);
     contextStats.set(row.channelContextId, entry);
   }
 
@@ -62,6 +67,7 @@ export default async function CanaisPage() {
           code: a.code,
           description: a.description,
         }))}
+      initialChannelId={initialChannelId}
     />
   );
 }

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { GovernanceHub } from "@/components/feature/governance-hub";
+import { BackButton } from "@/components/ui/back-button";
 import { Button } from "@/components/ui/button";
 import { withEvidenceFileUrls } from "@/lib/evidence-files";
 import { isSupabaseEnabled } from "@/lib/supabase/server";
@@ -9,11 +10,11 @@ import {
   getFeatureById,
   getFeatureContexts,
   getFeatureEvidences,
+  getFeatureEvolutions,
   getFeatureGaps,
   getFeatureHierarchy,
   getFeatureRoadmap,
 } from "@/services/features";
-import { ArrowLeft } from "lucide-react";
 
 export default async function FeatureDetailPage({
   params,
@@ -24,13 +25,14 @@ export default async function FeatureDetailPage({
   const feature = await getFeatureById(id);
   if (!feature) notFound();
 
-  const [db, hierarchy, contexts, evidencesRaw, roadmap, gaps] =
+  const [db, hierarchy, contexts, evidencesRaw, roadmap, evolutions, gaps] =
     await Promise.all([
       getDatabase(),
       getFeatureHierarchy(id),
       getFeatureContexts(id),
       getFeatureEvidences(id),
       getFeatureRoadmap(id),
+      getFeatureEvolutions(id),
       getFeatureGaps(id),
     ]);
 
@@ -38,27 +40,35 @@ export default async function FeatureDetailPage({
     ? await withEvidenceFileUrls(evidencesRaw)
     : evidencesRaw.map((e) => ({ ...e, fileUrl: null }));
 
-  const channelContextOptions = db.channelContexts
-    .filter((cc) => cc.active)
-    .map((cc) => {
-      const audience = db.audiences.find((a) => a.id === cc.audienceId)?.name;
-      const moment = db.moments.find((m) => m.id === cc.momentId)?.name;
-      const channel = db.channels.find((c) => c.id === cc.channelId)?.name;
-      return {
-        value: cc.id,
-        label: `${audience} · ${moment} · ${channel} (${cc.temporalStatus})`,
-      };
-    });
+  const activeChannelContexts = db.channelContexts.filter((cc) => cc.active);
+
+  const channelContextOptions = activeChannelContexts.map((cc) => {
+    const audience = db.audiences.find((a) => a.id === cc.audienceId)?.name;
+    const moment = db.moments.find((m) => m.id === cc.momentId)?.name;
+    const channel = db.channels.find((c) => c.id === cc.channelId)?.name;
+    return {
+      value: cc.id,
+      label: `${audience} · ${moment} · ${channel} (${cc.temporalStatus})`,
+    };
+  });
+
+  const channelContextMatrix = activeChannelContexts.map((cc) => ({
+    id: cc.id,
+    audienceId: cc.audienceId,
+    momentId: cc.momentId,
+    channelId: cc.channelId,
+    temporalStatus: cc.temporalStatus,
+  }));
+
+  const fccOptions = contexts.map((c) => ({
+    value: c.featureChannelContextId,
+    label: `${c.channelName} · ${c.audienceName} · ${c.momentName}`,
+  }));
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-3">
-        <Button asChild variant="outline" size="sm">
-          <Link href="/mapa">
-            <ArrowLeft className="h-3.5 w-3.5" />
-            Voltar ao mapa
-          </Link>
-        </Button>
+        <BackButton href="/mapa" />
         <Button asChild variant="outline" size="sm">
           <Link href={`/cadastros/funcionalidades?edit=${feature.id}`}>
             Cadastro completo
@@ -74,8 +84,8 @@ export default async function FeatureDetailPage({
           {feature.name}
         </h1>
         <p className="max-w-3xl text-sm text-[var(--muted-foreground)]">
-          Gerencie status por contexto, roadmap, evidências, responsáveis e
-          gaps em um único lugar.
+          Gerencie status por contexto, evoluções, roadmap, evidências,
+          responsáveis e gaps em um único lugar.
         </p>
       </section>
 
@@ -89,8 +99,11 @@ export default async function FeatureDetailPage({
         contexts={contexts}
         evidences={evidences}
         roadmap={roadmap}
+        evolutions={evolutions}
         gaps={gaps}
         channelContextOptions={channelContextOptions}
+        channelContextMatrix={channelContextMatrix}
+        fccOptions={fccOptions}
         audienceOptions={db.audiences.map((a) => ({
           value: a.id,
           label: a.name,

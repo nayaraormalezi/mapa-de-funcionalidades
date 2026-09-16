@@ -29,8 +29,8 @@ export type AudienceCode = "CLIENT" | "ECONOMIARIO" | "PARTNER";
 export type MomentCode = "SALE" | "AFTER_SALE";
 export type TemporalStatus = "CURRENT" | "FUTURE" | "DEPRECATED";
 
-/** Status oficial da funcionalidade por canal. */
-export type FeatureStatus =
+/** Etapa da funcionalidade no funil (Backlog → Disponível). */
+export type FeatureStage =
   | "BACKLOG"
   | "UX_UI"
   | "DEVELOPMENT"
@@ -38,6 +38,24 @@ export type FeatureStatus =
   | "PAUSED"
   | "REMOVED"
   | "AVAILABLE";
+
+/** Status de prazo da funcionalidade. */
+export type FeatureStatus = "ON_TRACK" | "DELAYED" | "NO_DEADLINE";
+
+/** Status da iniciativa de evolução (não confundir com fase da implementação). */
+export type EvolutionStatus =
+  | "IN_PROGRESS"
+  | "DONE"
+  | "CANCELLED"
+  | "PAUSED";
+
+/** Fase do trabalho da evolução (pipeline da melhoria). */
+export type EvolutionPhase =
+  | "BACKLOG"
+  | "UX_UI"
+  | "DEVELOPMENT"
+  | "HOMOLOGATION"
+  | "DONE";
 
 export type ExperienceLevel =
   | "NOT_EVALUATED"
@@ -48,8 +66,8 @@ export type ExperienceLevel =
 
 export type Priority = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
 
-/** Código do status no roadmap (mesmo catálogo oficial de FeatureStatus). */
-export type RoadmapPhase = FeatureStatus;
+/** Código da etapa no roadmap (mesmo catálogo de FeatureStage). */
+export type RoadmapPhase = FeatureStage;
 
 export type EvidenceType =
   | "UX_RESEARCH"
@@ -237,6 +255,25 @@ export interface RoadmapItem {
   notes: string;
 }
 
+/** Evolução/melhoria vinculada a uma implementação (feature + canal). */
+export interface FeatureEvolution {
+  id: string;
+  featureChannelContextId: string;
+  title: string;
+  description: string;
+  phase: EvolutionPhase;
+  status: EvolutionStatus;
+  priority: Priority;
+  startDate: string | null;
+  expectedDate: string | null;
+  completedDate: string | null;
+  responsible: string;
+  notes: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Gap {
   id: string;
   title: string;
@@ -368,5 +405,6 @@ export interface DemoDatabase {
   evidences: Evidence[];
   roadmapPhases: RoadmapPhaseDef[];
   roadmapItems: RoadmapItem[];
+  featureEvolutions: FeatureEvolution[];
   gaps: Gap[];
 }

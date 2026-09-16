@@ -6,6 +6,7 @@ import {
   DuplicateFeatureButton,
 } from "@/components/cadastros/row-actions";
 import { PriorityBadge } from "@/components/badges/priority-badge";
+import { BackButton } from "@/components/ui/back-button";
 import {
   Card,
   CardContent,
@@ -38,9 +39,7 @@ export default async function CadastroFuncionalidadesPage({
             Funcionalidades
           </h1>
         </div>
-        <Link href="/configuracoes?tab=cadastros" className="text-sm text-[var(--brand)] hover:underline">
-          Voltar
-        </Link>
+        <BackButton href="/configuracoes?tab=cadastros" />
       </div>
 
       <Card>

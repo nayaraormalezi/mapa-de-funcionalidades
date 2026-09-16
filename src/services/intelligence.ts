@@ -1,6 +1,6 @@
 import {
-  DEVELOPMENT_STATUSES,
-  PLANNED_STATUSES,
+  DEVELOPMENT_STAGES,
+  PLANNED_STAGES,
   experienceLabel,
   featureStatusLabel,
   gapTypeLabel,
@@ -106,19 +106,19 @@ export async function getCoverageMatrix(): Promise<CoverageCell[]> {
       );
       const total = uniqueFeatureIds(scoped).size;
       const available = uniqueFeatureIds(
-        scoped.filter((r) => r.status === "AVAILABLE"),
+        scoped.filter((r) => r.phase === "AVAILABLE"),
       ).size;
       const planned = uniqueFeatureIds(
-        scoped.filter((r) => PLANNED_STATUSES.includes(r.status)),
+        scoped.filter((r) => PLANNED_STAGES.includes(r.phase)),
       ).size;
       const inDevelopment = uniqueFeatureIds(
-        scoped.filter((r) => DEVELOPMENT_STATUSES.includes(r.status)),
+        scoped.filter((r) => DEVELOPMENT_STAGES.includes(r.phase)),
       ).size;
       const problems = uniqueFeatureIds(
         scoped.filter((r) => (r.experience === "NEEDS_IMPROVEMENT" || r.experience === "CRITICAL")),
       ).size;
       const notAvailable = uniqueFeatureIds(
-        scoped.filter((r) => r.status === "REMOVED"),
+        scoped.filter((r) => r.phase === "REMOVED"),
       ).size;
 
       cells.push({
@@ -258,7 +258,7 @@ export async function getParityFindings(): Promise<ParityFinding[]> {
 
     const uniqueStatuses = new Set(
       current
-        .filter((r) => r.status !== "REMOVED")
+        .filter((r) => r.phase !== "REMOVED")
         .map((r) => r.status),
     );
 
@@ -273,8 +273,8 @@ export async function getParityFindings(): Promise<ParityFinding[]> {
       });
     }
 
-    const hasCurrentAvailable = current.some((r) => r.status !== "REMOVED");
-    const futureDefined = future.some((r) => r.status !== "REMOVED");
+    const hasCurrentAvailable = current.some((r) => r.phase !== "REMOVED");
+    const futureDefined = future.some((r) => r.phase !== "REMOVED");
 
     if (hasCurrentAvailable && future.length > 0 && !futureDefined) {
       findings.push({
@@ -396,7 +396,7 @@ export async function getIntelligenceInsights(): Promise<IntelligenceInsight[]> 
   }
 
   const planned = uniqueFeatureIds(
-    rows.filter((r) => PLANNED_STATUSES.includes(r.status)),
+    rows.filter((r) => PLANNED_STAGES.includes(r.phase)),
   ).size;
   if (planned > 0) {
     insights.push({
@@ -422,7 +422,7 @@ export async function getChannelCoverageDetail() {
       const scoped = rows.filter((r) => r.channelId === channel.id);
       const total = uniqueFeatureIds(scoped).size;
       const available = uniqueFeatureIds(
-        scoped.filter((r) => r.status === "AVAILABLE"),
+        scoped.filter((r) => r.phase === "AVAILABLE"),
       ).size;
       const future = scoped.some((r) => r.temporalStatus === "FUTURE");
       const current = scoped.some((r) => r.temporalStatus === "CURRENT");
@@ -459,7 +459,7 @@ export async function getAdvancedComparison(channelAId: string, channelBId: stri
   const mapByFeature = (list: FeatureMapRow[]) => {
     const map = new Map<string, FeatureMapRow>();
     for (const row of list) {
-      if (row.status !== "REMOVED" && !map.has(row.featureId)) {
+      if (row.phase !== "REMOVED" && !map.has(row.featureId)) {
         map.set(row.featureId, row);
       }
     }

@@ -9,6 +9,7 @@ import {
 } from "@/app/actions/crud";
 import { CrudForm, Field } from "@/components/cadastros/crud-form";
 import { ArchiveButton } from "@/components/cadastros/row-actions";
+import { BackButton } from "@/components/ui/back-button";
 import {
   Card,
   CardContent,
@@ -30,9 +31,7 @@ function Header({ title }: { title: string }) {
           {title}
         </h1>
       </div>
-      <Link href="/configuracoes?tab=cadastros" className="text-sm text-[var(--brand)] hover:underline">
-        Voltar
-      </Link>
+      <BackButton href="/configuracoes?tab=cadastros" />
     </div>
   );
 }

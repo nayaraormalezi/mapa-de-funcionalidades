@@ -288,20 +288,30 @@ export async function upsertFeatureChannelContext(
   if (blocked) return blocked;
 
   const id = (formData.get("id") as string) || newId("fcc");
-  // Status e fase são o mesmo catálogo — um valor alimenta os dois campos.
-  const statusOrPhase =
-    String(formData.get("status") ?? "").trim() ||
+  const phase =
     String(formData.get("phase") ?? "").trim() ||
+    String(formData.get("etapa") ?? "").trim() ||
     "BACKLOG";
+  const expectedDate = (formData.get("expected_date") as string) || null;
+  const statusRaw = String(formData.get("status") ?? "").trim();
+  const { deriveDeadlineStatus, normalizeDeadlineStatus } = await import(
+    "@/lib/labels"
+  );
+  const status =
+    statusRaw === "ON_TRACK" ||
+    statusRaw === "DELAYED" ||
+    statusRaw === "NO_DEADLINE"
+      ? normalizeDeadlineStatus(statusRaw)
+      : deriveDeadlineStatus(expectedDate, phase);
   const payload = {
     id,
     feature_id: String(formData.get("feature_id") ?? ""),
     channel_context_id: String(formData.get("channel_context_id") ?? ""),
-    status: statusOrPhase,
+    status,
     experience: String(formData.get("experience") ?? "NOT_EVALUATED"),
-    phase: statusOrPhase,
+    phase,
     start_date: (formData.get("start_date") as string) || null,
-    expected_date: (formData.get("expected_date") as string) || null,
+    expected_date: expectedDate,
     launch_date: (formData.get("launch_date") as string) || null,
     responsible: String(formData.get("responsible") ?? "").trim(),
     notes: String(formData.get("notes") ?? "").trim(),
@@ -449,44 +459,140 @@ export async function upsertRoadmapItem(
   const blocked = await guardMutation();
   if (blocked) return blocked;
 
-  const id = (formData.get("id") as string) || newId("rm");
-  const phase =
-    String(formData.get("phase") ?? "").trim() ||
-    String(formData.get("status") ?? "").trim() ||
-    "BACKLOG";
-  const payload = {
-    id,
-    feature_id: String(formData.get("feature_id") ?? ""),
-    channel_context_id:
-      (formData.get("channel_context_id") as string) || null,
-    phase,
-    start_date: (formData.get("start_date") as string) || null,
-    expected_date: (formData.get("expected_date") as string) || null,
-    actual_date: (formData.get("actual_date") as string) || null,
-    responsible: String(formData.get("responsible") ?? "").trim(),
-    notes: String(formData.get("notes") ?? "").trim(),
-    active: formData.get("active") !== "false",
-  };
+  const existingId = (formData.get("id") as string) || "";
+  const phase = String(formData.get("phase") ?? "").trim() || "BACKLOG";
+  const featureId = String(formData.get("feature_id") ?? "");
+  const startDate = (formData.get("start_date") as string) || null;
+  const expectedDate = (formData.get("expected_date") as string) || null;
+  const actualDate = (formData.get("actual_date") as string) || null;
+  const responsible = String(formData.get("responsible") ?? "").trim();
+  const notes = String(formData.get("notes") ?? "").trim();
 
-  if (!payload.feature_id) {
+  if (!featureId) {
     return { ok: false, message: "Funcionalidade é obrigatória." };
   }
 
+  const audienceIds = formData
+    .getAll("audience_ids")
+    .map(String)
+    .filter(Boolean);
+  const momentId = String(formData.get("moment_id") ?? "").trim();
+  const channelIds = formData.getAll("channel_ids").map(String).filter(Boolean);
+  const legacyContextId =
+    (formData.get("channel_context_id") as string)?.trim() || null;
+
+  const hasAnyContextDim =
+    audienceIds.length > 0 || Boolean(momentId) || channelIds.length > 0;
+  const hasCompleteContext =
+    audienceIds.length > 0 && Boolean(momentId) && channelIds.length > 0;
+
+  if (hasAnyContextDim && !hasCompleteContext) {
+    return {
+      ok: false,
+      message:
+        "Para vincular contexto, selecione público, momento e ao menos um canal.",
+    };
+  }
+
   const supabase = await createClient();
-  const { error } = await supabase.from("roadmap_items").upsert(payload);
+
+  let contextIds: (string | null)[] = [];
+
+  if (hasCompleteContext) {
+    const { data, error: ctxError } = await supabase
+      .from("channel_contexts")
+      .select("id, audience_id, moment_id, channel_id, temporal_status")
+      .eq("active", true)
+      .eq("moment_id", momentId)
+      .in("audience_id", audienceIds)
+      .in("channel_id", channelIds);
+
+    if (ctxError) return { ok: false, message: ctxError.message };
+
+    const preferred = new Map<string, string>();
+    for (const row of data ?? []) {
+      const key = `${row.audience_id}|${row.moment_id}|${row.channel_id}`;
+      const current = preferred.get(key);
+      if (!current || row.temporal_status === "CURRENT") {
+        preferred.set(key, row.id);
+      }
+    }
+    contextIds = Array.from(preferred.values());
+    if (contextIds.length === 0) {
+      return {
+        ok: false,
+        message:
+          "Nenhum contexto de canal encontrado para o público, momento e canais selecionados.",
+      };
+    }
+  } else if (legacyContextId) {
+    contextIds = [legacyContextId];
+  } else {
+    contextIds = [null];
+  }
+
+  if (existingId) {
+    const payload = {
+      id: existingId,
+      feature_id: featureId,
+      channel_context_id: contextIds[0] ?? null,
+      phase,
+      start_date: startDate,
+      expected_date: expectedDate,
+      actual_date: actualDate,
+      responsible,
+      notes,
+      active: formData.get("active") !== "false",
+    };
+    const { error } = await supabase.from("roadmap_items").upsert(payload);
+    if (error) return { ok: false, message: error.message };
+
+    if (payload.channel_context_id) {
+      await supabase
+        .from("feature_channel_contexts")
+        .update({ phase })
+        .eq("feature_id", featureId)
+        .eq("channel_context_id", payload.channel_context_id);
+    }
+
+    revalidateAll();
+    return { ok: true, message: "Item de roadmap salvo.", id: existingId };
+  }
+
+  const rows = contextIds.map((channelContextId) => ({
+    id: newId("rm"),
+    feature_id: featureId,
+    channel_context_id: channelContextId,
+    phase,
+    start_date: startDate,
+    expected_date: expectedDate,
+    actual_date: actualDate,
+    responsible,
+    notes,
+    active: true,
+  }));
+
+  const { error } = await supabase.from("roadmap_items").upsert(rows);
   if (error) return { ok: false, message: error.message };
 
-  // Mantém status do contexto de canal alinhado à fase do roadmap.
-  if (payload.channel_context_id) {
+  for (const row of rows) {
+    if (!row.channel_context_id) continue;
     await supabase
       .from("feature_channel_contexts")
-      .update({ status: phase, phase })
-      .eq("feature_id", payload.feature_id)
-      .eq("channel_context_id", payload.channel_context_id);
+      .update({ phase })
+      .eq("feature_id", featureId)
+      .eq("channel_context_id", row.channel_context_id);
   }
 
   revalidateAll();
-  return { ok: true, message: "Item de roadmap salvo.", id };
+  return {
+    ok: true,
+    message:
+      rows.length > 1
+        ? `${rows.length} itens de roadmap salvos.`
+        : "Item de roadmap salvo.",
+    id: rows[0]?.id,
+  };
 }
 
 function slugPhaseCode(name: string) {
@@ -601,4 +707,60 @@ export async function upsertMoment(formData: FormData): Promise<ActionResult> {
   if (error) return { ok: false, message: error.message };
   revalidateAll();
   return { ok: true, message: "Momento salvo.", id };
+}
+
+export async function upsertFeatureEvolution(
+  formData: FormData,
+): Promise<ActionResult> {
+  const blocked = await guardMutation();
+  if (blocked) return blocked;
+
+  const id = (formData.get("id") as string) || newId("fevo");
+  const phase = String(formData.get("phase") ?? "").trim() || "BACKLOG";
+  let status = String(formData.get("status") ?? "").trim() || "IN_PROGRESS";
+  if (phase === "DONE") status = "DONE";
+  if (status === "DONE" && phase !== "DONE") {
+    // allow status DONE with phase DONE
+  }
+  const payload = {
+    id,
+    feature_channel_context_id: String(
+      formData.get("feature_channel_context_id") ?? "",
+    ),
+    title: String(formData.get("title") ?? "").trim(),
+    description: String(formData.get("description") ?? "").trim(),
+    phase: phase === "DONE" || status === "DONE" ? "DONE" : phase,
+    status: phase === "DONE" ? "DONE" : status,
+    priority: String(formData.get("priority") ?? "MEDIUM"),
+    start_date: (formData.get("start_date") as string) || null,
+    expected_date: (formData.get("expected_date") as string) || null,
+    completed_date:
+      status === "DONE"
+        ? (formData.get("completed_date") as string) ||
+          new Date().toISOString().slice(0, 10)
+        : (formData.get("completed_date") as string) || null,
+    responsible: String(formData.get("responsible") ?? "").trim(),
+    notes: String(formData.get("notes") ?? "").trim(),
+    active: formData.get("active") !== "false",
+    updated_at: new Date().toISOString(),
+  };
+
+  if (!payload.feature_channel_context_id || !payload.title) {
+    return {
+      ok: false,
+      message: "Implementação (contexto) e título da evolução são obrigatórios.",
+    };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("feature_evolutions").upsert(payload);
+  if (error) return { ok: false, message: error.message };
+  revalidateAll();
+  return { ok: true, message: "Evolução salva.", id };
+}
+
+export async function archiveFeatureEvolution(
+  id: string,
+): Promise<ActionResult> {
+  return archiveRecord("feature_evolutions", id);
 }

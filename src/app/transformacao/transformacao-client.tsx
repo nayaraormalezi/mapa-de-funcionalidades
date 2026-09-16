@@ -3,8 +3,10 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { StageBadge } from "@/components/badges/stage-badge";
 import { StatusBadge } from "@/components/badges/status-badge";
 import { ChannelMigrationView } from "@/components/transformation/channel-migration-view";
+import { BackButton } from "@/components/ui/back-button";
 import { Button } from "@/components/ui/button";
 import {
   FilterSelect,
@@ -13,7 +15,7 @@ import {
 } from "@/components/ui/prototype";
 import { formatPercent } from "@/lib/utils";
 import type { AudienceCode, TransformationSummary } from "@/types";
-import { ArrowDown, ArrowLeft } from "lucide-react";
+import { ArrowDown } from "lucide-react";
 
 type MigrationRow = {
   current: {
@@ -27,11 +29,13 @@ type MigrationRow = {
     momentId: string;
     channelId: string;
     status: import("@/types").FeatureStatus;
+    phase: import("@/types").FeatureStage;
   };
   future: {
     featureChannelContextId: string;
     channelName: string;
     status: import("@/types").FeatureStatus;
+    phase: import("@/types").FeatureStage;
     channelId: string;
   } | null;
 };
@@ -70,7 +74,7 @@ export function TransformacaoClient({
       if (momentId && current.momentId !== momentId) return false;
       if (!onlyUndefined) return true;
       if (future === null) return true;
-      return future.status === "REMOVED";
+      return future.phase === "REMOVED";
     });
   }, [migrations, audienceId, momentId, onlyUndefined]);
 
@@ -91,12 +95,7 @@ export function TransformacaoClient({
         description={`Dados exclusivos de ${audienceName}. Prontidão: ${formatPercent(readinessPercent)}.`}
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <Button asChild variant="outline" size="sm">
-              <Link href="/canais">
-                <ArrowLeft className="h-3.5 w-3.5" />
-                Voltar
-              </Link>
-            </Button>
+            <BackButton href="/canais" />
             <Button asChild variant="ghost" size="sm">
               <Link href="/transformacao">Trocar público</Link>
             </Button>
@@ -198,9 +197,12 @@ export function TransformacaoClient({
                   {future?.channelName ?? "Sem definição"}
                 </p>
               </div>
-              <div className="self-center">
+              <div className="flex flex-col items-start gap-1 self-center">
                 {future ? (
-                  <StatusBadge status={future.status} />
+                  <>
+                    <StageBadge stage={future.phase} />
+                    <StatusBadge status={future.status} />
+                  </>
                 ) : (
                   <span className="text-xs text-[var(--muted-foreground)]">
                     Indefinido

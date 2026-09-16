@@ -54,13 +54,13 @@ export default async function RelatoriosPage() {
 
   const featureTotal = new Set(rows.map((r) => r.featureId)).size;
   const available = new Set(
-    rows.filter((r) => r.status === "AVAILABLE").map((r) => r.featureId),
+    rows.filter((r) => r.phase === "AVAILABLE").map((r) => r.featureId),
   ).size;
   const plannedOrDev = new Set(
     rows
       .filter((r) =>
         ["BACKLOG", "UX_UI", "DEVELOPMENT", "HOMOLOGATION", "PAUSED"].includes(
-          r.status,
+          r.phase,
         ),
       )
       .map((r) => r.featureId),

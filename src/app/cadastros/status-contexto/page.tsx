@@ -2,7 +2,9 @@ import Link from "next/link";
 import { upsertFeatureChannelContext } from "@/app/actions/crud";
 import { CrudForm, Field } from "@/components/cadastros/crud-form";
 import { ArchiveButton } from "@/components/cadastros/row-actions";
+import { StageBadge } from "@/components/badges/stage-badge";
 import { StatusBadge } from "@/components/badges/status-badge";
+import { BackButton } from "@/components/ui/back-button";
 import {
   Card,
   CardContent,
@@ -12,6 +14,7 @@ import {
 } from "@/components/ui/card";
 import {
   experienceLabel,
+  featureStageOptions,
   featureStatusOptions,
 } from "@/lib/labels";
 import { getDatabase } from "@/services/db";
@@ -47,9 +50,7 @@ export default async function StatusContextoPage({
             Status por contexto
           </h1>
         </div>
-        <Link href="/configuracoes?tab=cadastros" className="text-sm text-[var(--brand)] hover:underline">
-          Voltar
-        </Link>
+        <BackButton href="/configuracoes?tab=cadastros" />
       </div>
 
       <Card>
@@ -83,8 +84,15 @@ export default async function StatusContextoPage({
                 label="Status"
                 name="status"
                 as="select"
-                defaultValue={editing?.status ?? editing?.phase ?? "BACKLOG"}
+                defaultValue={editing?.status ?? "NO_DEADLINE"}
                 options={featureStatusOptions()}
+              />
+              <Field
+                label="Etapa"
+                name="phase"
+                as="select"
+                defaultValue={editing?.phase ?? "BACKLOG"}
+                options={featureStageOptions()}
               />
               <Field
                 label="Experiência"
@@ -150,8 +158,9 @@ export default async function StatusContextoPage({
                   <p className="text-xs text-[var(--muted-foreground)]">
                     {context?.label}
                   </p>
-                  <div className="mt-1">
+                  <div className="mt-1 flex flex-wrap gap-1.5">
                     <StatusBadge status={item.status} />
+                    <StageBadge stage={item.phase} />
                   </div>
                 </div>
                 <div className="flex gap-2">

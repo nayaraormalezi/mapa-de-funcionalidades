@@ -4,6 +4,7 @@ import { upsertGap } from "@/app/actions/crud";
 import { PriorityBadge } from "@/components/badges/priority-badge";
 import { CrudForm, Field } from "@/components/cadastros/crud-form";
 import { ArchiveButton } from "@/components/cadastros/row-actions";
+import { BackButton } from "@/components/ui/back-button";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -20,7 +21,6 @@ import {
 } from "@/lib/labels";
 import { getDatabase } from "@/services/db";
 import { getGapById } from "@/services/gaps";
-import { ArrowLeft } from "lucide-react";
 
 export default async function GapDetailPage({
   params,
@@ -52,12 +52,7 @@ export default async function GapDetailPage({
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-3">
-        <Button asChild variant="outline" size="sm">
-          <Link href="/gaps">
-            <ArrowLeft className="h-3.5 w-3.5" />
-            Voltar aos gaps
-          </Link>
-        </Button>
+        <BackButton href="/gaps" />
         {feature ? (
           <Button asChild variant="outline" size="sm">
             <Link href={`/funcionalidades/${feature.id}`}>

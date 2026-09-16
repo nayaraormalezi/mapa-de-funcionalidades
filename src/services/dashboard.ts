@@ -1,6 +1,6 @@
 import {
-  DEVELOPMENT_STATUSES,
-  PLANNED_STATUSES,
+  DEVELOPMENT_STAGES,
+  PLANNED_STAGES,
 } from "@/lib/labels";
 import {
   buildFeatureMapRows,
@@ -23,13 +23,13 @@ export async function getDashboardKpis(): Promise<DashboardKpis> {
   const rows = await buildFeatureMapRows();
   const features = uniqueFeatureIds(rows);
   const available = uniqueFeatureIds(
-    rows.filter((r) => r.status === "AVAILABLE"),
+    rows.filter((r) => r.phase === "AVAILABLE"),
   );
   const inDevelopment = uniqueFeatureIds(
-    rows.filter((r) => DEVELOPMENT_STATUSES.includes(r.status)),
+    rows.filter((r) => DEVELOPMENT_STAGES.includes(r.phase)),
   );
   const planned = uniqueFeatureIds(
-    rows.filter((r) => PLANNED_STATUSES.includes(r.status)),
+    rows.filter((r) => PLANNED_STAGES.includes(r.phase)),
   );
   const withProblem = uniqueFeatureIds(
     rows.filter(
@@ -60,7 +60,7 @@ async function coverageFor(
     const scoped = rows.filter((r) => predicate(r, item.id));
     const total = uniqueFeatureIds(scoped).size;
     const available = uniqueFeatureIds(
-      scoped.filter((r) => r.status === "AVAILABLE"),
+      scoped.filter((r) => r.phase === "AVAILABLE"),
     ).size;
     return {
       id: item.id,

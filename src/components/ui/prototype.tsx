@@ -39,17 +39,17 @@ export function PageHeader({
             <div className="flex-1" />
           )}
           {callout ? (
-            <div className="flex max-w-sm shrink-0 gap-3 rounded-xl border border-[#cfe3f5] bg-[#e8f1fa] px-4 py-3 shadow-[var(--shadow-sm)]">
+            <div className="flex max-w-sm shrink-0 gap-3 rounded-xl border border-[#b3d4eb] bg-[#e6f0f7] px-4 py-3 shadow-[var(--shadow-sm)]">
               {CalloutIcon ? (
                 <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-[var(--brand)]">
                   <CalloutIcon className="h-4 w-4" />
                 </div>
               ) : null}
               <div>
-                <p className="text-sm font-semibold text-[#0f3d6e]">
+                <p className="text-sm font-semibold text-[#005ca9]">
                   {callout.title}
                 </p>
-                <p className="mt-0.5 text-xs leading-relaxed text-[#145fab]/80">
+                <p className="mt-0.5 text-xs leading-relaxed text-[#005ca9]/80">
                   {callout.body}
                 </p>
               </div>
@@ -100,7 +100,7 @@ export function StatCard({
     success: "border-b-emerald-400",
     warning: "border-b-amber-400",
     danger: "border-b-rose-400",
-    info: "border-b-sky-400",
+    info: "border-b-[var(--brand)]",
     accent: "border-b-violet-400",
   };
   const iconTone = {
@@ -108,7 +108,7 @@ export function StatCard({
     success: "bg-emerald-50 text-emerald-600",
     warning: "bg-amber-50 text-amber-600",
     danger: "bg-rose-50 text-rose-600",
-    info: "bg-sky-50 text-sky-600",
+    info: "bg-[var(--brand-soft)] text-[var(--brand)]",
     accent: "bg-violet-50 text-violet-600",
   };
 
@@ -269,7 +269,7 @@ export function FilterChip({
       className={cn(
         "inline-flex h-9 items-center gap-1.5 rounded-full border px-3 text-xs transition-colors",
         active
-          ? "border-sky-200 bg-sky-50 text-sky-900"
+          ? "border-[var(--brand-ring)] bg-[var(--brand-soft)] text-[var(--brand)]"
           : "border-[var(--border)] bg-white text-slate-700 hover:bg-slate-50",
         className,
       )}

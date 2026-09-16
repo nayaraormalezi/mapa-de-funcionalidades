@@ -14,17 +14,8 @@ import type {
 } from "@/types";
 import { getFeatures } from "@/services/features";
 
-const AVAILABLE_LIKE = new Set([
-  "AVAILABLE",
-  "HOMOLOGATION",
-  "DEVELOPMENT",
-  "UX_UI",
-  "BACKLOG",
-  "PAUSED",
-]);
-
-function isPresent(status: string) {
-  return status !== "REMOVED";
+function isPresent(phase: string) {
+  return phase !== "REMOVED";
 }
 
 function featureIdsOnChannel(
@@ -38,7 +29,7 @@ function featureIdsOnChannel(
         (r) =>
           r.channelId === channelId &&
           (!temporal || r.temporalStatus === temporal) &&
-          isPresent(r.status),
+          isPresent(r.phase),
       )
       .map((r) => r.featureId),
   );
@@ -93,7 +84,7 @@ export async function getTransformationSummaries(): Promise<
           .filter(
             (r) =>
               futureChannelIds.has(r.channelId) &&
-              AVAILABLE_LIKE.has(r.status),
+              isPresent(r.phase),
           )
           .map((r) => r.featureId),
       );
@@ -101,13 +92,13 @@ export async function getTransformationSummaries(): Promise<
         scopedRows
           .filter(
             (r) =>
-              futureChannelIds.has(r.channelId) && r.status === "REMOVED",
+              futureChannelIds.has(r.channelId) && r.phase === "REMOVED",
           )
           .map((r) => r.featureId),
       );
       const discontinued = new Set(
         scopedRows
-          .filter((r) => r.status === "REMOVED")
+          .filter((r) => r.phase === "REMOVED")
           .map((r) => r.featureId),
       );
 
@@ -224,7 +215,7 @@ export async function getMigrationRoadmapRows(filters?: {
       r.channelId !== filters.currentChannelId
     )
       return false;
-    if (!isPresent(r.status)) return false;
+    if (!isPresent(r.phase)) return false;
     return true;
   });
 

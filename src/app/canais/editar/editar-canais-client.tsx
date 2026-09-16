@@ -8,6 +8,7 @@ import {
   upsertChannelContext,
 } from "@/app/actions/crud";
 import { Button } from "@/components/ui/button";
+import { BackButton } from "@/components/ui/back-button";
 import {
   PageHeader,
   SurfaceCard,
@@ -16,7 +17,7 @@ import {
 import { temporalStatusLabel } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 import type { ChannelContext, TemporalStatus } from "@/types";
-import { ArrowLeft, Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 
 type Option = { value: string; label: string };
 
@@ -142,12 +143,7 @@ export function EditarCanaisClient({
         description="Defina quais canais entram na jornada deste público em cada momento. O catálogo de canais é compartilhado; a ativação é por público."
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <Button asChild variant="outline" size="sm">
-              <Link href="/canais">
-                <ArrowLeft className="h-3.5 w-3.5" />
-                Voltar
-              </Link>
-            </Button>
+            <BackButton href="/canais" />
             <Button asChild variant="ghost" size="sm">
               <Link href="/cadastros/canais">Catálogo de canais</Link>
             </Button>

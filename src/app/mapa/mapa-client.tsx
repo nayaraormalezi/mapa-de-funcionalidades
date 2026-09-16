@@ -5,6 +5,7 @@ import Link from "next/link";
 import { FeatureMatrix } from "@/components/map/feature-matrix";
 import { FeatureRow } from "@/components/map/feature-row";
 import { NovaFuncionalidadeModal } from "@/components/map/nova-funcionalidade-modal";
+import { StageBadge } from "@/components/badges/stage-badge";
 import { StatusBadge } from "@/components/badges/status-badge";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
@@ -16,9 +17,10 @@ import {
 } from "@/components/ui/prototype";
 import { useMapFilters } from "@/hooks/use-map-filters";
 import {
-  FEATURE_STATUS_ORDER,
+  FEATURE_STAGE_ORDER,
   experienceLabel,
-  featureStatusLabel,
+  featureStageLabel,
+  featureStageOptions,
   featureStatusOptions,
   priorityLabel,
 } from "@/lib/labels";
@@ -26,9 +28,11 @@ import { cn } from "@/lib/utils";
 import type {
   ExperienceLevel,
   FeatureMapRow,
+  FeatureStage,
   FeatureStatus,
   MapFilters,
   Priority,
+  RoadmapPhase,
 } from "@/types";
 import {  ChevronLeft,
   ChevronRight,
@@ -45,12 +49,12 @@ import {  ChevronLeft,
 type Option = { value: string; label: string };
 type JourneyOption = Option & { momentIds: string[] };
 
-const legendDot: Record<FeatureStatus, string> = {
-  BACKLOG: "bg-[#00b5e5]",
+const legendDot: Record<FeatureStage, string> = {
+  BACKLOG: "bg-[#005ca9]",
   UX_UI: "bg-[#b26f9b]",
   DEVELOPMENT: "bg-[#f39300]",
   HOMOLOGATION: "bg-[#f8b019]",
-  PAUSED: "bg-[#145fab]",
+  PAUSED: "bg-[#005ca9]",
   REMOVED: "bg-stone-500",
   AVAILABLE: "bg-[#a6ce39]",
 };
@@ -155,6 +159,7 @@ export function MapaClient({
   const [page, setPage] = useState(1);
 
   const statusOptions = featureStatusOptions();
+  const stageOptions = featureStageOptions();
   const experienceOptions = Object.entries(experienceLabel).map(
     ([value, label]) => ({ value, label }),
   );
@@ -299,6 +304,14 @@ export function MapaClient({
               options={[{ value: "", label: "Todas" }, ...priorityOptions]}
             />
             <FilterSelect
+              label="Etapa"
+              value={filters.phases[0] ?? ""}
+              onChange={(v) =>
+                updateFilter("phases", v ? ([v] as RoadmapPhase[]) : [])
+              }
+              options={[{ value: "", label: "Todas" }, ...stageOptions]}
+            />
+            <FilterSelect
               label="Produto"
               value={filters.products[0] ?? ""}
               onChange={(v) => singleSelect(updateFilter, "products", v)}
@@ -441,11 +454,11 @@ export function MapaClient({
                 className={cn(
                   "border-l-4 pl-3",
                   [
-                    "border-l-[#145fab]",
+                    "border-l-[#005ca9]",
                     "border-l-[#406c3d]",
                     "border-l-[#f39300]",
                     "border-l-[#b26f9b]",
-                    "border-l-[#00b5e5]",
+                    "border-l-[#005ca9]",
                     "border-l-[#ef765e]",
                   ][index % 6],
                 )}
@@ -533,21 +546,21 @@ export function MapaClient({
           <SurfaceCard className="flex flex-col gap-4 p-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <p className="mb-2 text-[11px] font-semibold tracking-wide text-slate-500 uppercase">
-                Legenda de status da funcionalidade
+                Legenda de etapa da funcionalidade
               </p>
               <ul className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                {FEATURE_STATUS_ORDER.map((status) => (
+                {FEATURE_STAGE_ORDER.map((stage) => (
                   <li
-                    key={status}
+                    key={stage}
                     className="inline-flex items-center gap-1.5 text-xs text-slate-600"
                   >
                     <span
                       className={cn(
                         "inline-block h-2 w-2 rounded-full",
-                        legendDot[status],
+                        legendDot[stage],
                       )}
                     />
-                    {featureStatusLabel[status]}
+                    {featureStageLabel[stage]}
                   </li>
                 ))}
               </ul>
@@ -603,6 +616,7 @@ function ChannelList({ rows }: { rows: FeatureMapRow[] }) {
           </div>
           <div className="flex items-center gap-2">
             <span className="text-xs text-slate-500">{row.channelName}</span>
+            <StageBadge stage={row.phase} />
             <StatusBadge status={row.status} />
             <button
               type="button"

@@ -1,13 +1,13 @@
 import Link from "next/link";
-import { StatusBadge } from "@/components/badges/status-badge";
+import { StageBadge } from "@/components/badges/stage-badge";
 import { EmptyState } from "@/components/shared/empty-state";
 import { SurfaceCard } from "@/components/ui/prototype";
 import { cn } from "@/lib/utils";
-import type { FeatureMapRow, FeatureStatus, TemporalStatus } from "@/types";
+import type { FeatureMapRow, FeatureStage, TemporalStatus } from "@/types";
 import { LayoutGrid, MoreHorizontal, Sparkles } from "lucide-react";
 
 type MatrixCell = {
-  status: FeatureStatus;
+  stage: FeatureStage;
   featureId: string;
 };
 
@@ -29,11 +29,11 @@ type MatrixGroup = {
 };
 
 const journeyAccent = [
-  "border-l-[#145fab]",
+  "border-l-[#005ca9]",
   "border-l-[#406c3d]",
   "border-l-[#f39300]",
   "border-l-[#b26f9b]",
-  "border-l-[#00b5e5]",
+  "border-l-[#005ca9]",
   "border-l-[#ef765e]",
 ];
 
@@ -92,7 +92,7 @@ function buildMatrixGroups(rows: FeatureMapRow[]): MatrixGroup[] {
           for (const channel of channels) {
             const match = featureRows.find((r) => r.channelId === channel.id);
             cells[channel.id] = match
-              ? { status: match.status, featureId: match.featureId }
+              ? { stage: match.phase, featureId: match.featureId }
               : null;
           }
           return {
@@ -255,7 +255,7 @@ export function FeatureMatrix({ rows }: { rows: FeatureMapRow[] }) {
                             )}
                           >
                             {cell ? (
-                              <StatusBadge status={cell.status} />
+                              <StageBadge stage={cell.stage} />
                             ) : (
                               <span className="text-xs text-slate-300">—</span>
                             )}

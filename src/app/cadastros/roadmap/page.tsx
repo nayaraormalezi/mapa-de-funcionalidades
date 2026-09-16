@@ -2,13 +2,14 @@ import Link from "next/link";
 import { upsertRoadmapItem } from "@/app/actions/crud";
 import { CrudForm, Field } from "@/components/cadastros/crud-form";
 import { ArchiveButton } from "@/components/cadastros/row-actions";
+import { BackButton } from "@/components/ui/back-button";
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { featureStatusLabel, featureStatusOptions } from "@/lib/labels";
+import { featureStageLabel, featureStageOptions } from "@/lib/labels";
 import { formatDate } from "@/lib/utils";
 import { getDatabase } from "@/services/db";
 
@@ -43,9 +44,7 @@ export default async function CadastroRoadmapPage({
             Roadmap
           </h1>
         </div>
-        <Link href="/configuracoes?tab=cadastros" className="text-sm text-[var(--brand)] hover:underline">
-          Voltar
-        </Link>
+        <BackButton href="/configuracoes?tab=cadastros" />
       </div>
 
       <Card>
@@ -68,12 +67,12 @@ export default async function CadastroRoadmapPage({
                 }))}
               />
               <Field
-                label="Status"
+                label="Etapa"
                 name="phase"
                 as="select"
                 required
                 defaultValue={editing?.phase ?? "BACKLOG"}
-                options={featureStatusOptions()}
+                options={featureStageOptions()}
               />
               <Field
                 label="Contexto de canal"
@@ -128,7 +127,7 @@ export default async function CadastroRoadmapPage({
             >
               <div>
                 <p className="text-sm font-medium">
-                  {featureStatusLabel[item.phase as keyof typeof featureStatusLabel] ??
+                  {featureStageLabel[item.phase as keyof typeof featureStageLabel] ??
                     item.phase}
                 </p>
                 <p className="text-xs text-[var(--muted-foreground)]">

@@ -1,5 +1,9 @@
 import { getDatabase } from "@/services/db";
-import { normalizeFeatureStatus } from "@/lib/labels";
+import {
+  deriveDeadlineStatus,
+  normalizeDeadlineStatus,
+  normalizeFeatureStage,
+} from "@/lib/labels";
 import type {
   Channel,
   ChannelContext,
@@ -106,7 +110,13 @@ export async function buildFeatureMapRows(): Promise<FeatureMapRow[]> {
         return null;
       }
 
-      const status = normalizeFeatureStatus(fcc.status || fcc.phase);
+      const stage = normalizeFeatureStage(fcc.phase || fcc.status);
+      const status =
+        fcc.status === "ON_TRACK" ||
+        fcc.status === "DELAYED" ||
+        fcc.status === "NO_DEADLINE"
+          ? normalizeDeadlineStatus(fcc.status)
+          : deriveDeadlineStatus(fcc.expectedDate, stage);
 
       return {
         featureId: feature.id,
@@ -138,7 +148,7 @@ export async function buildFeatureMapRows(): Promise<FeatureMapRow[]> {
         featureChannelContextId: fcc.id,
         status,
         experience: fcc.experience,
-        phase: status,
+        phase: stage,
         startDate: fcc.startDate,
         expectedDate: fcc.expectedDate,
         launchDate: fcc.launchDate,
