@@ -1,16 +1,35 @@
 import { EmptyState } from "@/components/shared/empty-state";
 import { phaseDisplayName } from "@/lib/labels";
 import { formatDate } from "@/lib/utils";
-import type { RoadmapItem } from "@/types";
+import type { RoadmapPhase } from "@/types";
 import { Milestone } from "lucide-react";
 
-export function RoadmapTimeline({ items }: { items: RoadmapItem[] }) {
+/**
+ * Item de timeline derivado da Implementation (FeatureChannelContext).
+ * Não usa RoadmapItem como fonte de verdade.
+ */
+export type ImplementationTimelineItem = {
+  id: string;
+  phase: RoadmapPhase | string;
+  startDate: string | null;
+  expectedDate: string | null;
+  /** Data real / lançamento (FCC.launchDate). */
+  actualDate: string | null;
+  responsible: string;
+  notes: string;
+};
+
+export function RoadmapTimeline({
+  items,
+}: {
+  items: ImplementationTimelineItem[];
+}) {
   if (items.length === 0) {
     return (
       <EmptyState
         icon={Milestone}
-        title="Sem roadmap"
-        description="Nenhum status de roadmap registrado para esta funcionalidade."
+        title="Sem entregas"
+        description="Nenhuma implementação registrada para esta funcionalidade."
         className="py-8"
       />
     );

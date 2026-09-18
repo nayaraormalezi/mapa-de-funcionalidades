@@ -8,18 +8,21 @@ import {
 } from "@/services/channels";
 import { getDatabase } from "@/services/db";
 import { getOpenGaps } from "@/services/gaps";
+import { getCoverageGaps } from "@/services/gaps-opportunities";
 import { DashboardView } from "./dashboard-view";
 
 export default async function DashboardPage() {
-  const [auth, rows, audiences, moments, matrix, gaps, db] = await Promise.all([
-    getAuthState(),
-    buildFeatureMapRows(),
-    getAudiences(),
-    getMoments(),
-    getOfficialChannelMatrix(),
-    getOpenGaps(),
-    getDatabase(),
-  ]);
+  const [auth, rows, audiences, moments, matrix, gaps, coverageGaps, db] =
+    await Promise.all([
+      getAuthState(),
+      buildFeatureMapRows(),
+      getAudiences(),
+      getMoments(),
+      getOfficialChannelMatrix(),
+      getOpenGaps(),
+      getCoverageGaps(),
+      getDatabase(),
+    ]);
 
   const userName =
     auth.profile?.fullName?.trim().split(/\s+/)[0] ||
@@ -73,9 +76,16 @@ export default async function DashboardPage() {
       moments={moments.map((m) => ({ value: m.id, label: m.name }))}
       products={products}
       gaps={gaps}
+      coverageGaps={coverageGaps.map((g) => ({
+        audienceId: g.audienceId,
+        momentId: g.momentId,
+      }))}
       gapMeta={gapMeta}
       channelTabs={channelTabs}
       updatedAtLabel={updatedAtLabel}
+      featureCreatedAt={Object.fromEntries(
+        db.features.map((f) => [f.id, f.createdAt]),
+      )}
     />
   );
 }

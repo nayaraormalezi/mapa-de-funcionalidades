@@ -13,14 +13,13 @@ import {
 } from "@/components/ui/prototype";
 import { PriorityBadge } from "@/components/badges/priority-badge";
 import { StageBadge } from "@/components/badges/stage-badge";
-import { featureStageLabel, FEATURE_STAGE_ORDER } from "@/lib/labels";
+import { CONCEPT_LABEL, featureStageLabel, FEATURE_STAGE_ORDER } from "@/lib/labels";
 import { cn, formatPercent } from "@/lib/utils";
 import type { AudienceCode, FeatureStage, Priority } from "@/types";
 import {
   ArrowRight,
   Layers,
   Map,
-  Package,
   Route,
   ShieldAlert,
 } from "lucide-react";
@@ -40,6 +39,7 @@ type ProductAudience = {
   id: string;
   name: string;
   code?: AudienceCode;
+  /** Contagem de implementações (linhas) neste público. */
   featureTotal: number;
   featureAvailable: number;
   coveragePercent: number;
@@ -61,11 +61,15 @@ export type ProductSummary = {
   featureTotal: number;
   featureAvailable: number;
   featureInProgress: number;
+  implementationTotal: number;
+  implementationAvailable: number;
   coveragePercent: number;
   audienceCount: number;
   channelCount: number;
+  needCount: number;
   journeyCount: number;
   momentCount: number;
+  evolutionCount: number;
   openGaps: number;
   owners: string[];
   stageCounts: Record<string, number>;
@@ -101,7 +105,8 @@ export function ProdutosClient({
         if (!audience) return null;
         return {
           ...product,
-          featureTotal: audience.featureTotal,
+          implementationTotal: audience.featureTotal,
+          implementationAvailable: audience.featureAvailable,
           featureAvailable: audience.featureAvailable,
           coveragePercent: audience.coveragePercent,
         };
@@ -118,8 +123,16 @@ export function ProdutosClient({
     (sum, p) => sum + p.featureTotal,
     0,
   );
+  const totalImplementations = filteredProducts.reduce(
+    (sum, p) => sum + p.implementationTotal,
+    0,
+  );
   const totalAvailable = filteredProducts.reduce(
-    (sum, p) => sum + p.featureAvailable,
+    (sum, p) => sum + p.implementationAvailable,
+    0,
+  );
+  const totalEvolutions = filteredProducts.reduce(
+    (sum, p) => sum + p.evolutionCount,
     0,
   );
   const avgCoverage =
@@ -135,14 +148,9 @@ export function ProdutosClient({
   return (
     <div className="space-y-5">
       <PageHeader
-        breadcrumb="Ecossistema › Produtos"
+        breadcrumb={[{ label: "Produtos" }]}
         title="Produtos"
-        description="O Consórcio CAIXA se organiza em três linhas: Imobiliário, Veículos Leves e Veículos Pesados. Acompanhe cobertura, canais e jornadas de cada uma."
-        callout={{
-          title: "Três linhas, uma experiência",
-          body: "Compare cobertura e gaps entre Imobiliário, Veículos Leves e Veículos Pesados para priorizar evolução.",
-          icon: Package,
-        }}
+        description="Filtre o ecossistema por produto. A jornada é compartilhada; necessidades e funcionalidades têm aplicabilidade (comum ou específica)."
       />
 
       <SurfaceCard className="p-4">
@@ -162,7 +170,7 @@ export function ProdutosClient({
         </div>
       </SurfaceCard>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
         <StatCard
           label="Produtos"
           value={filteredProducts.length}
@@ -172,19 +180,31 @@ export function ProdutosClient({
         <StatCard
           label="Funcionalidades"
           value={totalFeatures}
-          hint={`${totalAvailable} disponíveis`}
+          hint={`${totalImplementations} implementações`}
           tone="info"
+        />
+        <StatCard
+          label="Implementações disp."
+          value={totalAvailable}
+          hint={`de ${totalImplementations}`}
+          tone="success"
         />
         <StatCard
           label="Cobertura média"
           value={formatPercent(avgCoverage)}
+          hint="Por implementação"
           tone="success"
         />
         <StatCard
-          label="Gaps abertos"
+          label="Evoluções"
+          value={totalEvolutions}
+          tone={totalEvolutions > 0 ? "info" : "default"}
+        />
+        <StatCard
+          label={`${CONCEPT_LABEL.issues} abertas`}
           value={totalGaps}
           tone={totalGaps > 0 ? "warning" : "default"}
-          hint="Vinculados às funcionalidades"
+          hint="Vinculadas às funcionalidades"
           icon={ShieldAlert}
         />
       </div>
@@ -195,12 +215,12 @@ export function ProdutosClient({
             <thead className="bg-slate-50 text-xs tracking-wide text-[var(--muted-foreground)] uppercase">
               <tr>
                 <th className="px-4 py-3">Produto</th>
-                <th className="px-4 py-3">Funcionalidades</th>
-                <th className="px-4 py-3">Cobertura</th>
-                <th className="px-4 py-3">Públicos</th>
-                <th className="px-4 py-3">Canais</th>
+                <th className="px-4 py-3">Necessidades</th>
                 <th className="px-4 py-3">Jornadas</th>
-                <th className="px-4 py-3">Gaps</th>
+                <th className="px-4 py-3">Funcionalidades</th>
+                <th className="px-4 py-3">Implementações disp.</th>
+                <th className="px-4 py-3">Evoluções</th>
+                <th className="px-4 py-3">{CONCEPT_LABEL.issues}</th>
               </tr>
             </thead>
             <tbody>
@@ -233,42 +253,34 @@ export function ProdutosClient({
                           {product.shortName || product.name}
                         </p>
                         <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">
-                          {product.description ||
-                            (product.owners[0]
-                              ? `${product.owners[0]}${
-                                  product.owners.length > 1
-                                    ? ` +${product.owners.length - 1}`
-                                    : ""
-                                }`
-                              : "Sem product owner")}
+                          {formatPercent(product.coveragePercent)} cobertura
+                          {product.owners[0]
+                            ? ` · ${product.owners[0]}${
+                                product.owners.length > 1
+                                  ? ` +${product.owners.length - 1}`
+                                  : ""
+                              }`
+                            : ""}
                         </p>
                       </td>
                       <td className="px-4 py-3 tabular-nums">
-                        {product.featureTotal}
-                        <span className="text-[var(--muted-foreground)]">
-                          {" "}
-                          · {product.featureAvailable} disp.
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 min-w-[140px]">
-                        <div className="space-y-1">
-                          <p className="text-xs font-medium tabular-nums">
-                            {formatPercent(product.coveragePercent)}
-                          </p>
-                          <ProgressBar
-                            value={product.coveragePercent}
-                            barClassName="bg-[var(--brand)]"
-                          />
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 tabular-nums">
-                        {product.audienceCount}
-                      </td>
-                      <td className="px-4 py-3 tabular-nums">
-                        {product.channelCount}
+                        {product.needCount}
                       </td>
                       <td className="px-4 py-3 tabular-nums">
                         {product.journeyCount}
+                      </td>
+                      <td className="px-4 py-3 tabular-nums">
+                        {product.featureTotal}
+                      </td>
+                      <td className="px-4 py-3 tabular-nums">
+                        {product.implementationAvailable}
+                        <span className="text-[var(--muted-foreground)]">
+                          {" "}
+                          / {product.implementationTotal}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 tabular-nums">
+                        {product.evolutionCount}
                       </td>
                       <td className="px-4 py-3 tabular-nums">
                         {product.openGaps}
@@ -321,15 +333,18 @@ export function ProdutosClient({
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-2">
                     <MiniStat
-                      label="Disponíveis"
-                      value={selected.featureAvailable}
+                      label="Necessidades"
+                      value={selected.needCount}
+                    />
+                    <MiniStat label="Jornadas" value={selected.journeyCount} />
+                    <MiniStat
+                      label="Implementações disp."
+                      value={selected.implementationAvailable}
                     />
                     <MiniStat
-                      label="Em evolução"
-                      value={selected.featureInProgress}
+                      label="Evoluções"
+                      value={selected.evolutionCount}
                     />
-                    <MiniStat label="Canais" value={selected.channelCount} />
-                    <MiniStat label="Jornadas" value={selected.journeyCount} />
                   </div>
 
                   <div>
@@ -359,7 +374,7 @@ export function ProdutosClient({
                       className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--brand)] hover:underline"
                     >
                       <Map className="h-3.5 w-3.5" />
-                      Abrir no mapa de funcionalidades
+                      Abrir em Funcionalidades
                       <ArrowRight className="h-3 w-3" />
                     </Link>
                     <Link
@@ -367,7 +382,7 @@ export function ProdutosClient({
                       className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--brand)] hover:underline"
                     >
                       <Route className="h-3.5 w-3.5" />
-                      Ver jornadas relacionadas
+                      Mostrar jornadas relacionadas
                       <ArrowRight className="h-3 w-3" />
                     </Link>
                   </div>
@@ -394,7 +409,7 @@ export function ProdutosClient({
                           {feature.channelCount} canais · {feature.audienceCount}{" "}
                           públicos
                           {feature.openGaps > 0
-                            ? ` · ${feature.openGaps} gaps`
+                            ? ` · ${feature.openGaps} ${feature.openGaps === 1 ? CONCEPT_LABEL.issue.toLowerCase() : CONCEPT_LABEL.issues.toLowerCase()}`
                             : ""}
                         </span>
                       </div>

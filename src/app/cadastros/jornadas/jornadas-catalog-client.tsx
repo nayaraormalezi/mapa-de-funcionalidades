@@ -101,7 +101,11 @@ export function JornadasCatalogClient({
   return (
     <div className="space-y-5">
       <PageHeader
-        breadcrumb="Cadastros › Jornadas"
+        breadcrumb={[
+          { label: "Configurações", href: "/configuracoes" },
+          { label: "Cadastros", href: "/configuracoes?tab=cadastros" },
+          { label: "Jornadas" },
+        ]}
         title="Catálogo global de jornadas"
         description="Sitemap das etapas compartilhadas. Use o catálogo para cruzar jornadas entre Cliente, Economiário e Parceiro — a mesma etapa pode aparecer com nomes diferentes em cada público."
         leading={<BackButton href="/jornadas" />}

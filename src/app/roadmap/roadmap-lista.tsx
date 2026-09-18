@@ -26,18 +26,22 @@ export function RoadmapListaView({
   if (groups.length === 0) {
     return (
       <SurfaceCard className="p-6 text-sm text-[var(--muted-foreground)]">
-        Nenhum item de roadmap com os filtros atuais.
+        Nenhum item com os filtros atuais.
       </SurfaceCard>
     );
   }
 
   return (
     <SurfaceCard className="overflow-x-auto p-0">
+      <p className="border-b border-[var(--border)] bg-slate-50/60 px-4 py-2 text-[11px] text-[var(--muted-foreground)]">
+        Cada linha é uma implementação; agrupadas por funcionalidade.
+      </p>
       <table className="min-w-[1200px] w-full text-left text-sm">
         <thead className="bg-slate-50 text-xs tracking-wide text-[var(--muted-foreground)] uppercase">
           <tr>
             <th className="px-4 py-3">Funcionalidade</th>
             <th className="px-4 py-3">Produto</th>
+            <th className="px-4 py-3">Necessidade</th>
             <th className="px-4 py-3">Público</th>
             <th className="px-4 py-3">Momento</th>
             <th className="px-4 py-3">Jornada</th>
@@ -86,7 +90,7 @@ function FeatureGroup({
   return (
     <>
       <tr className="border-t border-[var(--border)] bg-slate-50/80">
-        <td colSpan={10} className="px-4 py-2.5">
+        <td colSpan={11} className="px-4 py-2.5">
           <button
             type="button"
             onClick={() => onOpenFeature(group.featureId)}
@@ -123,6 +127,9 @@ function FeatureGroup({
                 <span className="rounded-full bg-[var(--brand-soft)] px-2 py-0.5 text-[10px] font-semibold text-[var(--brand)]">
                   {item.productShortName}
                 </span>
+              </td>
+              <td className="px-4 py-2.5 text-xs text-slate-700">
+                {item.userNeedName || "—"}
               </td>
               <td className="px-4 py-2.5 text-xs text-slate-700">
                 {item.audienceName}
@@ -176,7 +183,7 @@ function FeatureGroup({
                     className="border-t border-amber-50 bg-amber-50/30"
                   >
                     <td
-                      colSpan={5}
+                      colSpan={6}
                       className="cursor-pointer px-4 py-2.5 pl-10 text-xs text-amber-900"
                       onClick={() => onOpenEvolution(item, evo)}
                     >
@@ -197,7 +204,7 @@ function FeatureGroup({
                         onClick={() => onOpenEvolution(item, evo)}
                         className="text-[11px] font-medium text-[var(--brand)] hover:underline"
                       >
-                        Ver →
+                        Mostrar →
                       </button>
                     </td>
                     <td className="px-4 py-2.5 text-xs text-slate-600">

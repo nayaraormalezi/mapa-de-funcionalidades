@@ -158,7 +158,7 @@ export function RoadmapPhasesManager({
         <div className="flex items-start justify-between gap-3 border-b border-[var(--border)] px-5 py-4">
           <div>
             <p className="text-[11px] font-semibold tracking-[0.08em] text-slate-400 uppercase">
-              Roadmap
+              Gestão de entregas
             </p>
             <h2
               id="phases-manager-title"
@@ -266,7 +266,7 @@ export function RoadmapPhasesManager({
                       </p>
                       <p className="text-[11px] text-slate-500">
                         {row.code || "—"}
-                        {usage > 0 ? ` · ${usage} item(ns) no roadmap` : ""}
+                        {usage > 0 ? ` · ${usage} item(ns) em uso` : ""}
                       </p>
                     </div>
                     {canEdit ? (

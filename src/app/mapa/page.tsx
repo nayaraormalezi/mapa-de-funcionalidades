@@ -40,10 +40,35 @@ export default async function MapaPage() {
           value: n.id,
           label: n.name,
           journeyId: n.journeyId,
+          audienceIds: n.audienceIds,
         }))}
       channels={channels.map((c) => ({ value: c.id, label: c.name }))}
+      channelContexts={db.channelContexts
+        .filter((c) => c.active)
+        .map((c) => ({
+          audienceId: c.audienceId,
+          momentId: c.momentId,
+          channelId: c.channelId,
+        }))}
+      journeyAudienceStages={db.journeyAudienceStages
+        .filter((s) => s.active)
+        .map((s) => ({
+          audienceId: s.audienceId,
+          journeyId: s.journeyId,
+          momentId: s.momentId,
+          displayName: s.displayName,
+          sortOrder: s.sortOrder,
+        }))}
       products={products}
       responsibles={responsibles}
+      existingFeatures={db.features
+        .filter((f) => f.active)
+        .map((f) => ({
+          value: f.id,
+          label: f.name,
+          description: f.description,
+        }))
+        .sort((a, b) => a.label.localeCompare(b.label, "pt-BR"))}
     />
   );
 }

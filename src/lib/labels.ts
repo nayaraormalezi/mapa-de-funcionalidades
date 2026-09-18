@@ -93,12 +93,16 @@ export function featureStatusOptions(): {
   }));
 }
 
+/**
+ * @deprecated Fase 11 — ExperienceLevel não é fonte oficial de Health.
+ * Preferir HealthBadge / healthScore derivado de Evaluation.
+ */
 export const experienceLabel: Record<ExperienceLevel, string> = {
-  NOT_EVALUATED: "Não avaliada",
-  GOOD: "Boa",
-  ADEQUATE: "Adequada",
-  NEEDS_IMPROVEMENT: "Precisa melhorar",
-  CRITICAL: "Crítica",
+  NOT_EVALUATED: "Não avaliada (legado)",
+  GOOD: "Boa (legado)",
+  ADEQUATE: "Adequada (legado)",
+  NEEDS_IMPROVEMENT: "Precisa melhorar (legado)",
+  CRITICAL: "Crítica (legado)",
 };
 
 export const priorityLabel: Record<Priority, string> = {
@@ -163,14 +167,58 @@ export function deriveDeadlineStatus(
   return day < today ? "DELAYED" : "ON_TRACK";
 }
 
+/**
+ * Conceitos funcionais do produto (UI — Fase 15.3).
+ *
+ * Domínio Melhorias:
+ *   Lacuna = ausência ou insuficiência de cobertura ("o que está faltando?")
+ *   Problema = falha/fricção em algo existente ("o que está funcionando mal?")
+ *   Oportunidade = possibilidade de melhoria ("onde podemos melhorar?")
+ *   Evolução = alteração planejada/realizada ("o que será feito?")
+ *
+ * Lacuna, Problema e Oportunidade são sinais/achados.
+ * Evolução é uma ação de mudança — não conversão automática dos sinais.
+ *
+ * Código interno pode manter Gap/Issue; a interface usa português.
+ */
+export const CONCEPT_LABEL = {
+  /** Domínio que agrupa Lacunas, Problemas e Oportunidades. */
+  melhorias: "Melhorias",
+  /** Cobertura ausente / necessidade não atendida (Coverage Gap). */
+  lacuna: "Lacuna",
+  lacunas: "Lacunas",
+  coverageGap: "Lacuna de cobertura",
+  coverageGaps: "Lacunas de cobertura",
+  /** Problema persistido (Issue / tabela `gaps`). */
+  problema: "Problema",
+  problemas: "Problemas",
+  issue: "Problema",
+  issues: "Problemas",
+  opportunity: "Oportunidade",
+  opportunities: "Oportunidades",
+  insight: "Insight",
+  insights: "Insights",
+  evolution: "Evolução",
+  evolutions: "Evoluções",
+  /** Módulo /roadmap — nome de produto (rota técnica permanece). */
+  gestaoEntregas: "Gestão de entregas",
+} as const;
+
+/**
+ * Tipos do modelo interno `Gap` (Gap₂ / Issue cadastrada).
+ * Não usar "Gap de …" aqui — evita confusão com gaps de cobertura do hub.
+ */
 export const gapTypeLabel: Record<GapType, string> = {
-  COVERAGE: "Gap de cobertura",
-  EXPERIENCE: "Gap de experiência",
-  CONSISTENCY: "Gap de consistência",
-  INFORMATION: "Gap de informação",
-  OPERATIONAL: "Gap operacional",
-  TRANSITION: "Gap de transição",
+  COVERAGE: "Cobertura",
+  EXPERIENCE: "Experiência",
+  CONSISTENCY: "Consistência",
+  INFORMATION: "Informação",
+  OPERATIONAL: "Operacional",
+  TRANSITION: "Transição",
 };
+
+/** Alias semântico: tipos exibidos no contexto de Issue (Gap₂). */
+export const issueTypeLabel = gapTypeLabel;
 
 export const gapStatusLabel: Record<GapStatus, string> = {
   OPEN: "Identificado",
@@ -179,6 +227,38 @@ export const gapStatusLabel: Record<GapStatus, string> = {
   DEFERRED: "Adiado",
   WONT_FIX: "Não será tratado",
 };
+
+/** Alias semântico: status de Issue (Gap₂). */
+export const issueStatusLabel = gapStatusLabel;
+
+/**
+ * Severidade de Insight (sinais do ecossistema).
+ * `watch` substitui o legado `opportunity` (conflito com Opportunity de avaliação).
+ */
+export type InsightSeverityCode = "critical" | "warning" | "watch" | "info";
+
+export const insightSeverityLabel: Record<InsightSeverityCode, string> = {
+  critical: "Crítico",
+  warning: "Atenção",
+  watch: "Observação",
+  info: "Info",
+};
+
+/** Normaliza severidade legada (`opportunity` → `watch`) sem exigir migração de banco. */
+export function normalizeInsightSeverity(
+  value: string | null | undefined,
+): InsightSeverityCode {
+  if (value === "opportunity") return "watch";
+  if (
+    value === "critical" ||
+    value === "warning" ||
+    value === "watch" ||
+    value === "info"
+  ) {
+    return value;
+  }
+  return "info";
+}
 
 export const evolutionStatusLabel: Record<
   import("@/types").EvolutionStatus,

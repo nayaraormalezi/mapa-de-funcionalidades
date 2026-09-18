@@ -19,11 +19,17 @@ export function EvidenceFileField({
   existingFileMime,
   existingFileSize,
   existingFileUrl,
+  inputName = "file",
+  removeName = "remove_file",
+  label = "Arquivo (PDF ou imagem)",
 }: {
   existingFileName?: string | null;
   existingFileMime?: string | null;
   existingFileSize?: number | null;
   existingFileUrl?: string | null;
+  inputName?: string;
+  removeName?: string;
+  label?: string;
 }) {
   const [fileName, setFileName] = useState<string | null>(null);
   const [remove, setRemove] = useState(false);
@@ -32,7 +38,7 @@ export function EvidenceFileField({
   return (
     <div className="space-y-2">
       <span className="text-xs font-semibold tracking-wide text-[var(--muted-foreground)] uppercase">
-        Arquivo (PDF ou imagem)
+        {label}
       </span>
       <p className="text-xs text-slate-500">
         Até 10 MB · PDF, JPG, PNG, WEBP ou GIF
@@ -99,7 +105,7 @@ export function EvidenceFileField({
         )}
         <input
           type="file"
-          name="file"
+          name={inputName}
           accept={ACCEPT}
           className="sr-only"
           onChange={(e) => {
@@ -110,7 +116,7 @@ export function EvidenceFileField({
         />
       </label>
 
-      {remove ? <input type="hidden" name="remove_file" value="true" /> : null}
+      {remove ? <input type="hidden" name={removeName} value="true" /> : null}
     </div>
   );
 }

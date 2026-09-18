@@ -14,11 +14,11 @@ import { RoadmapTimelineView } from "@/app/roadmap/roadmap-timeline-view";
 import {
   activeEvolutions,
   implInPeriod,
-  periodCutoff,
   type FeatureEvolution,
   type RoadmapImpl,
   type RoadmapViewMode,
 } from "@/app/roadmap/roadmap-types";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
 import {
   FilterSelect,
   PageHeader,
@@ -29,8 +29,13 @@ import { Button } from "@/components/ui/button";
 import {
   evolutionPhaseOptions,
   featureStageOptions,
+  featureStatusOptions,
   priorityLabel,
 } from "@/lib/labels";
+import {
+  allPeriodRange,
+  type DateRange,
+} from "@/lib/report-period";
 import { cn } from "@/lib/utils";
 import type {
   EvolutionPhase,
@@ -71,9 +76,9 @@ export function RoadmapClient({
   const [momentId, setMomentId] = useState("");
   const [channelId, setChannelId] = useState("");
   const [phase, setPhase] = useState("");
-  const [period, setPeriod] = useState("");
+  const [period, setPeriod] = useState<DateRange>(() => allPeriodRange());
   const [priority, setPriority] = useState("");
-  const [evolutionFilter, setEvolutionFilter] = useState("");
+  const [status, setStatus] = useState("");
   const [evolutionPhase, setEvolutionPhase] = useState("");
   const [search, setSearch] = useState("");
   const [view, setView] = useState<RoadmapViewMode>("kanban");
@@ -101,7 +106,6 @@ export function RoadmapClient({
   );
 
   const filtered = useMemo(() => {
-    const cutoff = periodCutoff(period);
     const q = search.trim().toLowerCase();
     return items.filter((item) => {
       if (productId && item.productId !== productId) return false;
@@ -109,11 +113,10 @@ export function RoadmapClient({
       if (momentId && item.momentId !== momentId) return false;
       if (channelId && item.channelId !== channelId) return false;
       if (priority && item.priority !== priority) return false;
-      if (cutoff && !implInPeriod(item, cutoff)) return false;
+      if (status && item.status !== status) return false;
+      if (!implInPeriod(item, period)) return false;
 
       const active = activeEvolutions(item);
-      if (evolutionFilter === "with" && active.length === 0) return false;
-      if (evolutionFilter === "without" && active.length > 0) return false;
       if (evolutionPhase && !active.some((e) => e.phase === evolutionPhase)) {
         return false;
       }
@@ -151,9 +154,9 @@ export function RoadmapClient({
     channelId,
     phase,
     priority,
+    status,
     period,
     search,
-    evolutionFilter,
     evolutionPhase,
   ]);
 
@@ -195,9 +198,9 @@ export function RoadmapClient({
     setMomentId("");
     setChannelId("");
     setPhase("");
-    setPeriod("");
+    setPeriod(allPeriodRange());
     setPriority("");
-    setEvolutionFilter("");
+    setStatus("");
     setEvolutionPhase("");
     setSearch("");
   }
@@ -298,6 +301,7 @@ export function RoadmapClient({
     }
     fd.set("responsible", evo.responsible);
     fd.set("notes", evo.notes);
+    if (evo.origin) fd.set("origin", evo.origin);
 
     startTransition(async () => {
       const result = await upsertFeatureEvolution(fd);
@@ -322,9 +326,9 @@ export function RoadmapClient({
   return (
     <div className="space-y-4">
       <PageHeader
-        breadcrumb="Roadmap › Visão geral"
-        title="Roadmap"
-        description="Acompanhe as etapas e status das funcionalidades."
+        breadcrumb={[{ label: "Gestão de entregas" }]}
+        title="Gestão de entregas"
+        description="Acompanhe implementações, status e evoluções das funcionalidades por canal."
         actions={
           <Button
             type="button"
@@ -445,13 +449,15 @@ export function RoadmapClient({
               className="min-w-[140px]"
             />
             <FilterSelect
-              label="Evolução"
-              value={evolutionFilter}
-              onChange={setEvolutionFilter}
+              label="Status"
+              value={status}
+              onChange={setStatus}
               options={[
-                { value: "", label: "Todas" },
-                { value: "with", label: "Com evolução" },
-                { value: "without", label: "Sem evolução" },
+                { value: "", label: "Todos" },
+                ...featureStatusOptions().map((s) => ({
+                  value: s.value,
+                  label: s.label,
+                })),
               ]}
               className="min-w-[150px]"
             />
@@ -468,17 +474,10 @@ export function RoadmapClient({
               ]}
               className="min-w-[160px]"
             />
-            <FilterSelect
+            <DateRangePicker
               label="Período"
               value={period}
               onChange={setPeriod}
-              options={[
-                { value: "", label: "Todos" },
-                { value: "30d", label: "Últimos 30 dias" },
-                { value: "90d", label: "Últimos 90 dias" },
-                { value: "ytd", label: "Ano corrente" },
-              ]}
-              className="min-w-[150px]"
             />
             <label className="relative min-w-[180px] flex-1">
               <span className="mb-1 block text-xs font-medium text-slate-600">

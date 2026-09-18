@@ -9,7 +9,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { gapStatusLabel, gapTypeLabel, priorityLabel } from "@/lib/labels";
+import { CONCEPT_LABEL, gapStatusLabel, gapTypeLabel, priorityLabel } from "@/lib/labels";
+import { PageBreadcrumb } from "@/components/ui/prototype";
 import { getDatabase } from "@/services/db";
 
 export default async function CadastroGapsPage({
@@ -24,10 +25,12 @@ export default async function CadastroGapsPage({
 
   return (
     <div className="space-y-6">
-      <Header title="Gaps" />
+      <Header title={CONCEPT_LABEL.issues} />
       <Card>
         <CardHeader>
-          <CardTitle>{editing ? "Editar" : "Novo"} gap</CardTitle>
+          <CardTitle>
+            {editing ? "Editar" : "Nova"} {CONCEPT_LABEL.issue.toLowerCase()}
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <CrudForm key={editing?.id ?? "new"} action={upsertGap}>
@@ -195,13 +198,26 @@ function Header({ title }: { title: string }) {
   return (
     <div className="space-y-3">
       <BackButton href="/configuracoes?tab=cadastros" />
-      <div>
-        <p className="text-xs font-semibold tracking-[0.14em] text-[var(--brand)] uppercase">
-          Cadastros
-        </p>
+      <div className="space-y-1">
+        <PageBreadcrumb
+          items={[
+            { label: "Configurações", href: "/configuracoes" },
+            { label: "Cadastros", href: "/configuracoes?tab=cadastros" },
+            { label: title },
+          ]}
+        />
         <h1 className="font-[family-name:var(--font-display)] text-2xl font-semibold">
           {title}
         </h1>
+        <p className="mt-2 max-w-2xl text-sm text-[var(--muted-foreground)]">
+          CRUD administrativo de {CONCEPT_LABEL.problemas.toLowerCase()} (tabela{" "}
+          <code className="text-xs">gaps</code>). Não confundir com{" "}
+          {CONCEPT_LABEL.coverageGaps.toLowerCase()} do hub{" "}
+          <Link href="/gaps" className="font-medium text-[var(--brand)] hover:underline">
+            /gaps
+          </Link>
+          .
+        </p>
       </div>
     </div>
   );

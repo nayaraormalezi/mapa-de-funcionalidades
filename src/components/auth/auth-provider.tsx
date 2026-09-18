@@ -8,9 +8,17 @@ export type AuthContextValue = {
   email: string | null;
   profile: UserProfile | null;
   role: UserRole;
+  /** Editor ou Admin — ações operacionais. */
   canEdit: boolean;
+  /** Somente Admin — taxonomias / usuários. */
+  canAdmin: boolean;
+  /** Alias de canAdmin (legado). */
   isAdmin: boolean;
+  isMasterAdmin: boolean;
+  /** @deprecated Prefer dataMode === "LIVE" */
   supabaseEnabled: boolean;
+  /** LIVE = Supabase real; DEMO = demo-data explícito */
+  dataMode: "LIVE" | "DEMO";
 };
 
 const AuthContext = createContext<AuthContextValue>({
@@ -19,8 +27,11 @@ const AuthContext = createContext<AuthContextValue>({
   profile: null,
   role: "viewer",
   canEdit: false,
+  canAdmin: false,
   isAdmin: false,
+  isMasterAdmin: false,
   supabaseEnabled: false,
+  dataMode: "DEMO",
 });
 
 export function AuthProvider({

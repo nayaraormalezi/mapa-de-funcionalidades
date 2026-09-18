@@ -1,458 +1,917 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { upsertGap } from "@/app/actions/crud";
 import { EmptyState } from "@/components/shared/empty-state";
+import { useAuth } from "@/components/auth/auth-provider";
 import { PriorityBadge } from "@/components/badges/priority-badge";
 import { Button } from "@/components/ui/button";
 import {
   FilterSelect,
   PageHeader,
-  ProgressBar,
   SectionTitle,
   StatCard,
   SurfaceCard,
   UnderlineTabs,
 } from "@/components/ui/prototype";
-import { gapStatusLabel, gapTypeLabel, priorityLabel } from "@/lib/labels";
+import { SIGNAL_LABEL } from "@/lib/evaluation-governance";
+import { evaluationAreaLabel } from "@/lib/evaluation-taxonomy";
+import {
+  CONCEPT_LABEL,
+  featureStageLabel,
+  gapStatusLabel,
+  gapTypeLabel,
+  priorityLabel,
+} from "@/lib/labels";
 import { cn } from "@/lib/utils";
-import type { Gap, GapStatus, GapType, Priority } from "@/types";
-import { MoreHorizontal, Plus, ShieldAlert } from "lucide-react";
+import type {
+  HubCoverageGap,
+  HubIssue,
+  HubOpportunity,
+} from "@/services/gaps-opportunities";
+import { AlertTriangle, Lightbulb, ShieldAlert } from "lucide-react";
 
-const TYPE_COLORS: Record<GapType, string> = {
-  COVERAGE: "#005ca9",
-  EXPERIENCE: "#b26f9b",
-  CONSISTENCY: "#005ca9",
-  INFORMATION: "#667085",
-  OPERATIONAL: "#f39300",
-  TRANSITION: "#ef765e",
-};
+export type HubTab = "gaps" | "opportunities" | "issues";
 
-const TYPE_BADGE: Record<GapType, string> = {
-  COVERAGE: "bg-[#e6f0f7] text-[#005ca9] ring-[#b3d4eb]",
-  EXPERIENCE: "bg-[#f8eef5] text-[#b26f9b] ring-[#e8c9dc]",
-  CONSISTENCY: "bg-[#e6f0f7] text-[#005ca9] ring-[#b3d4eb]",
-  INFORMATION: "bg-slate-50 text-slate-700 ring-slate-200",
-  OPERATIONAL: "bg-[#fef0d4] text-[#98522d] ring-[#fde8c8]",
-  TRANSITION: "bg-[#fce5df] text-[#8c2f1e] ring-[#fce5df]",
-};
+const TAB_IDS: HubTab[] = ["gaps", "opportunities", "issues"];
 
-type ViewTab = "lista" | "jornada" | "canal" | "matriz";
+function parseTab(raw: string | null): HubTab {
+  if (raw === "oportunidades") return "opportunities";
+  if (raw && TAB_IDS.includes(raw as HubTab)) return raw as HubTab;
+  return "gaps";
+}
 
 export function GapsClient({
-  gaps,
+  coverageGaps,
+  opportunities,
+  issues,
   audiences,
   moments,
-  journeyNameById = {},
-  summary,
+  journeys,
+  products,
+  initialTab = "gaps",
 }: {
-  gaps: Gap[];
+  coverageGaps: HubCoverageGap[];
+  opportunities: HubOpportunity[];
+  issues: HubIssue[];
   audiences: { id: string; name: string }[];
   moments: { id: string; name: string }[];
-  journeyNameById?: Record<string, string>;
-  summary: {
-    totalOpen: number;
-    byType: { type: GapType; label: string; count: number }[];
-    byImpact: { impact: string; count: number }[];
-    transitionCount: number;
-    criticalCount: number;
-  };
+  journeys: { id: string; name: string }[];
+  products: { id: string; name: string }[];
+  initialTab?: HubTab;
 }) {
-  const [type, setType] = useState("");
-  const [audienceId, setAudienceId] = useState("");
-  const [momentId, setMomentId] = useState("");
-  const [status, setStatus] = useState("");
-  const [impact, setImpact] = useState("");
-  const [viewTab, setViewTab] = useState<ViewTab>("lista");
+  const { canEdit } = useAuth();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [pending, startTransition] = useTransition();
 
-  const filtered = useMemo(() => {
-    return gaps.filter((gap) => {
-      if (type && gap.type !== type) return false;
-      if (audienceId && gap.audienceId !== audienceId) return false;
-      if (momentId && gap.momentId !== momentId) return false;
-      if (impact && gap.impact !== impact) return false;
-      if (status && gap.status !== status) return false;
+  const mainTab = parseTab(searchParams.get("tab") ?? initialTab);
+
+  function setMainTab(id: HubTab) {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("tab", id);
+    router.replace(`/gaps?${params.toString()}`, { scroll: false });
+  }
+
+  // —— Gaps filters ——
+  const [gapAudienceId, setGapAudienceId] = useState("");
+  const [gapMomentId, setGapMomentId] = useState("");
+  const [gapReason, setGapReason] = useState("");
+  const [gapProductId, setGapProductId] = useState("");
+  const [gapSearch, setGapSearch] = useState("");
+
+  // —— Opportunity filters ——
+  const [oppSeverity, setOppSeverity] = useState("");
+  const [oppArea, setOppArea] = useState("");
+  const [oppProductId, setOppProductId] = useState("");
+  const [oppAudienceId, setOppAudienceId] = useState("");
+  const [oppChannel, setOppChannel] = useState("");
+
+  // —— Issue filters ——
+  const [issueStatus, setIssueStatus] = useState("");
+  const [issueType, setIssueType] = useState("");
+  const [issueImpact, setIssueImpact] = useState("");
+  const [issueAudienceId, setIssueAudienceId] = useState("");
+  const [issueJourneyId, setIssueJourneyId] = useState("");
+
+  const channelOptions = useMemo(() => {
+    const names = new Set(opportunities.map((o) => o.channelName).filter(Boolean));
+    return Array.from(names)
+      .sort((a, b) => a.localeCompare(b, "pt-BR"))
+      .map((name) => ({ value: name, label: name }));
+  }, [opportunities]);
+
+  const areaOptions = useMemo(() => {
+    const codes = new Set<string>();
+    for (const op of opportunities) {
+      for (const a of op.areas) codes.add(a);
+    }
+    return Array.from(codes)
+      .sort()
+      .map((code) => ({
+        value: code,
+        label: evaluationAreaLabel(code),
+      }));
+  }, [opportunities]);
+
+  const filteredGaps = useMemo(() => {
+    const q = gapSearch.trim().toLowerCase();
+    return coverageGaps.filter((gap) => {
+      if (gapAudienceId && gap.audienceId !== gapAudienceId) return false;
+      if (gapMomentId && gap.momentId !== gapMomentId) return false;
+      if (gapReason && gap.reason !== gapReason) return false;
+      if (gapProductId && gap.productId !== gapProductId) return false;
+      if (q) {
+        const hay = [
+          gap.featureName,
+          gap.channelName,
+          gap.title,
+          gap.audienceName,
+          gap.momentName,
+          gap.productShortName,
+        ]
+          .join(" ")
+          .toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
       return true;
     });
-  }, [gaps, type, audienceId, momentId, impact, status]);
+  }, [
+    coverageGaps,
+    gapAudienceId,
+    gapMomentId,
+    gapReason,
+    gapProductId,
+    gapSearch,
+  ]);
 
-  const opportunities = gaps.filter(
-    (g) => g.status === "OPEN" || g.status === "IN_PROGRESS",
+  const filteredOpps = useMemo(() => {
+    return opportunities.filter((op) => {
+      if (oppSeverity && op.severity !== oppSeverity) return false;
+      if (oppArea && !op.areas.includes(oppArea as (typeof op.areas)[number]))
+        return false;
+      if (oppProductId && op.productId !== oppProductId) return false;
+      if (oppAudienceId && op.audienceId !== oppAudienceId) return false;
+      if (oppChannel && op.channelName !== oppChannel) return false;
+      return true;
+    });
+  }, [
+    opportunities,
+    oppSeverity,
+    oppArea,
+    oppProductId,
+    oppAudienceId,
+    oppChannel,
+  ]);
+
+  const filteredIssues = useMemo(() => {
+    return issues.filter((issue) => {
+      if (issueStatus && issue.status !== issueStatus) return false;
+      if (issueType && issue.type !== issueType) return false;
+      if (issueImpact && issue.impact !== issueImpact) return false;
+      if (issueAudienceId && issue.audienceId !== issueAudienceId) return false;
+      if (issueJourneyId && issue.journeyId !== issueJourneyId) return false;
+      return true;
+    });
+  }, [
+    issues,
+    issueStatus,
+    issueType,
+    issueImpact,
+    issueAudienceId,
+    issueJourneyId,
+  ]);
+
+  const gapsByFeature = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        featureId: string;
+        featureName: string;
+        href: string;
+        channels: {
+          name: string;
+          reason: HubCoverageGap["reason"];
+          phase: string;
+          expectedDate: string | null;
+          context: string;
+          fccId: string;
+        }[];
+      }
+    >();
+
+    for (const gap of filteredGaps) {
+      const existing = map.get(gap.featureId);
+      const channelEntry = {
+        name: gap.channelName,
+        reason: gap.reason,
+        phase: gap.phase,
+        expectedDate: gap.expectedDate,
+        context: `${gap.audienceName} · ${gap.momentName}`,
+        fccId: gap.fccId,
+      };
+      if (existing) {
+        if (
+          !existing.channels.some(
+            (c) =>
+              c.name === gap.channelName &&
+              c.context === channelEntry.context &&
+              c.reason === gap.reason,
+          )
+        ) {
+          existing.channels.push(channelEntry);
+        }
+        continue;
+      }
+      map.set(gap.featureId, {
+        featureId: gap.featureId,
+        featureName: gap.featureName,
+        href: gap.href,
+        channels: [channelEntry],
+      });
+    }
+
+    return Array.from(map.values()).sort((a, b) =>
+      a.featureName.localeCompare(b.featureName, "pt-BR"),
+    );
+  }, [filteredGaps]);
+
+  const filteredBacklogGaps = filteredGaps.filter(
+    (g) => g.reason === "BACKLOG",
   ).length;
-  const inTreatment = gaps.filter((g) => g.status === "IN_PROGRESS").length;
-  const done = gaps.filter((g) => g.status === "RESOLVED").length;
-  const highImpactShare =
-    gaps.length === 0
-      ? 0
-      : Math.round(
-          (gaps.filter(
-            (g) => g.impact === "HIGH" || g.impact === "CRITICAL",
-          ).length /
-            gaps.length) *
-            100,
-        );
+  const filteredUnplannedGaps = filteredGaps.filter(
+    (g) => g.reason === "NOT_PLANNED",
+  ).length;
+  const filteredCriticalOpps = filteredOpps.filter(
+    (o) => o.severity === "CRITICAL",
+  ).length;
+  const filteredOpenIssues = filteredIssues.filter(
+    (i) => i.status === "OPEN" || i.status === "IN_PROGRESS",
+  ).length;
+  const filteredCriticalIssues = filteredIssues.filter(
+    (i) => i.priority === "CRITICAL" || i.impact === "CRITICAL",
+  ).length;
 
-  const chartByType = useMemo(() => {
-    const counts = new Map<GapType, number>();
-    for (const gap of filtered) {
-      counts.set(gap.type, (counts.get(gap.type) ?? 0) + 1);
-    }
-    return (Object.keys(gapTypeLabel) as GapType[])
-      .filter((t) => (counts.get(t) ?? 0) > 0)
-      .map((t) => ({
-        type: t,
-        label: gapTypeLabel[t],
-        count: counts.get(t) ?? 0,
-        color: TYPE_COLORS[t],
-      }));
-  }, [filtered]);
+  const openIssuesTotal = issues.filter(
+    (i) => i.status === "OPEN" || i.status === "IN_PROGRESS",
+  ).length;
 
-  const typeTotal = chartByType.reduce((a, s) => a + s.count, 0) || 1;
+  function clearGapFilters() {
+    setGapAudienceId("");
+    setGapMomentId("");
+    setGapReason("");
+    setGapProductId("");
+    setGapSearch("");
+  }
 
-  const chartByPriority = useMemo(() => {
-    const order: Priority[] = ["CRITICAL", "HIGH", "MEDIUM", "LOW"];
-    const counts = new Map<Priority, number>();
-    for (const gap of filtered) {
-      counts.set(gap.priority, (counts.get(gap.priority) ?? 0) + 1);
-    }
-    const max = Math.max(...order.map((p) => counts.get(p) ?? 0), 1);
-    return order.map((p) => ({
-      priority: p,
-      label: priorityLabel[p],
-      count: counts.get(p) ?? 0,
-      pct: ((counts.get(p) ?? 0) / max) * 100,
-      share: Math.round(((counts.get(p) ?? 0) / (filtered.length || 1)) * 100),
-    }));
-  }, [filtered]);
+  function clearOppFilters() {
+    setOppSeverity("");
+    setOppArea("");
+    setOppProductId("");
+    setOppAudienceId("");
+    setOppChannel("");
+  }
 
-  const byJourney = useMemo(() => {
-    const map = new Map<string, Gap[]>();
-    for (const gap of filtered) {
-      const key =
-        journeyNameById[gap.journeyId] || gap.journeyId || "Sem jornada";
-      const list = map.get(key) ?? [];
-      list.push(gap);
-      map.set(key, list);
-    }
-    return Array.from(map.entries()).map(([name, list]) => ({ name, list }));
-  }, [filtered, journeyNameById]);
+  function clearIssueFilters() {
+    setIssueStatus("");
+    setIssueType("");
+    setIssueImpact("");
+    setIssueAudienceId("");
+    setIssueJourneyId("");
+  }
+
+  function resolveIssue(issue: HubIssue) {
+    if (!canEdit) return;
+    if (!confirm(`Marcar a issue "${issue.title}" como resolvida?`)) return;
+    startTransition(async () => {
+      const fd = new FormData();
+      fd.set("id", issue.id);
+      fd.set("title", issue.title);
+      fd.set("description", issue.description);
+      fd.set("type", issue.type);
+      fd.set("audience_id", issue.audienceId);
+      fd.set("moment_id", issue.momentId);
+      fd.set("journey_id", issue.journeyId);
+      fd.set("user_need_id", issue.userNeedId);
+      if (issue.productId) fd.set("product_id", issue.productId);
+      if (issue.featureId) fd.set("feature_id", issue.featureId);
+      if (issue.currentChannelId)
+        fd.set("current_channel_id", issue.currentChannelId);
+      if (issue.futureChannelId)
+        fd.set("future_channel_id", issue.futureChannelId);
+      fd.set("impact", issue.impact);
+      fd.set("priority", issue.priority);
+      fd.set("responsible", issue.responsible);
+      fd.set("status", "RESOLVED");
+      fd.set("action_plan", issue.actionPlan);
+      fd.set("is_demo", issue.isDemo ? "true" : "false");
+      const result = await upsertGap(fd);
+      if (result.ok) router.refresh();
+      else alert(result.message);
+    });
+  }
 
   return (
     <div className="space-y-5">
       <PageHeader
-        breadcrumb="Gaps & oportunidades › Visão geral"
-        title="Gaps & oportunidades"
-        description="Identifique lacunas na experiência, priorize oportunidades e acompanhe os planos de ação."
-        actions={
-          <Button asChild size="sm">
-            <Link href="/cadastros/gaps">
-              <Plus className="h-3.5 w-3.5" />
-              Nova oportunidade
-            </Link>
-          </Button>
-        }
+        breadcrumb={[{ label: CONCEPT_LABEL.melhorias }]}
+        title={CONCEPT_LABEL.melhorias}
+        description={`${CONCEPT_LABEL.lacunas}: o que está faltando. ${CONCEPT_LABEL.problemas}: o que está funcionando mal. ${CONCEPT_LABEL.opportunities}: onde podemos melhorar.`}
       />
 
-      <SurfaceCard className="p-4">
-        <div className="flex flex-wrap items-end gap-3">
-          <FilterSelect
-            label="Público"
-            value={audienceId}
-            onChange={setAudienceId}
-            options={[
-              { value: "", label: "Todos" },
-              ...audiences.map((a) => ({ value: a.id, label: a.name })),
-            ]}
-          />
-          <FilterSelect
-            label="Momento"
-            value={momentId}
-            onChange={setMomentId}
-            options={[
-              { value: "", label: "Todos" },
-              ...moments.map((m) => ({ value: m.id, label: m.name })),
-            ]}
-          />
-          <FilterSelect
-            label="Tipo de gap"
-            value={type}
-            onChange={setType}
-            options={[
-              { value: "", label: "Todos" },
-              ...Object.entries(gapTypeLabel).map(([value, label]) => ({
-                value,
-                label,
-              })),
-            ]}
-          />
-          <FilterSelect
-            label="Status"
-            value={status}
-            onChange={setStatus}
-            options={[
-              { value: "", label: "Todos" },
-              ...Object.entries(gapStatusLabel).map(([value, label]) => ({
-                value,
-                label,
-              })),
-            ]}
-          />
-          <FilterSelect
-            label="Impacto"
-            value={impact}
-            onChange={setImpact}
-            options={[
-              { value: "", label: "Todos" },
-              ...Object.entries(priorityLabel).map(([value, label]) => ({
-                value,
-                label,
-              })),
-            ]}
-          />
-        </div>
-      </SurfaceCard>
-
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          label="Gaps identificados"
-          value={gaps.length}
-          tone="warning"
-          icon={ShieldAlert}
-          trend={`▲ ${summary.criticalCount} críticos`}
-        />
-        <StatCard
-          label="Oportunidades"
-          value={opportunities}
-          tone="info"
-          trend="Em aberto ou tratamento"
-        />
-        <StatCard label="Em tratamento" value={inTreatment} tone="accent" />
-        <StatCard label="Concluídos" value={done} tone="success" />
-      </div>
-
-      <SurfaceCard className="border-[#fde8c8] bg-[#fffbeb] p-4 text-sm text-[#844200]">
-        <strong>Principais impactos:</strong> {highImpactShare}% dos gaps têm
-        impacto alto ou crítico na experiência do usuário.
+      <SurfaceCard className="border-[#e6f0f7] bg-[#f5f9fc] p-4 text-sm text-slate-700">
+        <strong>Como ler:</strong>{" "}
+        {CONCEPT_LABEL.lacuna} = necessidade sem cobertura adequada no canal.{" "}
+        {CONCEPT_LABEL.problema} = experiência existente com fricção ou falha.{" "}
+        {CONCEPT_LABEL.opportunity} = possibilidade de melhoria a partir de
+        evidências. Ausência de avaliação não gera oportunidade.
       </SurfaceCard>
 
       <UnderlineTabs
-        value={viewTab}
-        onChange={(id) => setViewTab(id as ViewTab)}
+        value={mainTab}
+        onChange={(id) => setMainTab(id as HubTab)}
         options={[
-          { id: "lista", label: "Lista" },
-          { id: "jornada", label: "Visão por jornada" },
-          { id: "canal", label: "Visão por canal" },
-          { id: "matriz", label: "Matriz de gaps" },
+          {
+            id: "gaps",
+            label: CONCEPT_LABEL.lacunas,
+            count: coverageGaps.length,
+          },
+          {
+            id: "issues",
+            label: CONCEPT_LABEL.problemas,
+            count: openIssuesTotal,
+          },
+          {
+            id: "opportunities",
+            label: CONCEPT_LABEL.opportunities,
+            count: opportunities.length,
+          },
         ]}
       />
 
-      <div className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
-        <div>
-          {filtered.length === 0 ? (
+      {mainTab === "gaps" ? (
+        <>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <StatCard
+              label={CONCEPT_LABEL.lacunas}
+              value={filteredGaps.length}
+              tone="warning"
+              icon={ShieldAlert}
+              trend={`${filteredBacklogGaps} em backlog · ${filteredUnplannedGaps} sem previsão`}
+            />
+            <StatCard
+              label="Em backlog"
+              value={filteredBacklogGaps}
+              tone="accent"
+              trend="No recorte filtrado"
+            />
+            <StatCard
+              label="Sem previsão"
+              value={filteredUnplannedGaps}
+              tone="danger"
+              trend="No recorte filtrado"
+            />
+          </div>
+
+          <SurfaceCard className="p-4">
+            <div className="flex flex-wrap items-end gap-3">
+              <FilterSelect
+                label="Público"
+                value={gapAudienceId}
+                onChange={setGapAudienceId}
+                options={[
+                  { value: "", label: "Todos" },
+                  ...audiences.map((a) => ({ value: a.id, label: a.name })),
+                ]}
+              />
+              <FilterSelect
+                label="Momento"
+                value={gapMomentId}
+                onChange={setGapMomentId}
+                options={[
+                  { value: "", label: "Todos" },
+                  ...moments.map((m) => ({ value: m.id, label: m.name })),
+                ]}
+              />
+              <FilterSelect
+                label="Motivo"
+                value={gapReason}
+                onChange={setGapReason}
+                options={[
+                  { value: "", label: "Todos" },
+                  { value: "BACKLOG", label: "Em backlog" },
+                  { value: "NOT_PLANNED", label: "Não prevista" },
+                ]}
+              />
+              <FilterSelect
+                label="Produto"
+                value={gapProductId}
+                onChange={setGapProductId}
+                options={[
+                  { value: "", label: "Todos" },
+                  ...products.map((p) => ({ value: p.id, label: p.name })),
+                ]}
+              />
+              <label className="grid gap-1 text-xs font-medium text-slate-600">
+                Busca
+                <input
+                  type="search"
+                  value={gapSearch}
+                  onChange={(e) => setGapSearch(e.target.value)}
+                  placeholder="Funcionalidade, canal…"
+                  className="h-9 min-w-[180px] rounded-md border border-[var(--border)] bg-white px-3 text-sm text-slate-900 outline-none focus:border-[var(--brand)]"
+                />
+              </label>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={clearGapFilters}
+              >
+                Limpar filtros
+              </Button>
+            </div>
+          </SurfaceCard>
+
+          <p className="text-sm text-[var(--muted-foreground)]">
+            Necessidades que ainda não são atendidas ou possuem baixa cobertura
+            nos canais. Respondem: o que está faltando?
+          </p>
+
+          {filteredGaps.length === 0 ? (
             <EmptyState
               icon={ShieldAlert}
-              title="Nenhum gap encontrado"
-              description="Ajuste os filtros ou cadastre uma nova oportunidade."
+              title={`Nenhuma ${CONCEPT_LABEL.lacuna.toLowerCase()} encontrada.`}
+              description="Nenhum canal associado está em backlog ou sem previsão no recorte atual."
             />
-          ) : viewTab === "jornada" ? (
-            <div className="space-y-4">
-              {byJourney.map((group) => (
-                <SurfaceCard key={group.name} className="p-4">
-                  <SectionTitle>
-                    {group.name}{" "}
-                    <span className="font-normal text-[var(--muted-foreground)]">
-                      ({group.list.length})
-                    </span>
-                  </SectionTitle>
-                  <ul className="space-y-2">
-                    {group.list.map((gap) => (
-                      <li key={gap.id}>
-                        <Link
-                          href={`/gaps/${gap.id}`}
-                          className="text-sm font-medium text-[var(--brand)] hover:underline"
+          ) : (
+            <div className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
+              <SurfaceCard className="overflow-x-auto">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="bg-slate-50 text-xs tracking-wide text-[var(--muted-foreground)] uppercase">
+                    <tr>
+                      <th className="px-4 py-3">Funcionalidade</th>
+                      <th className="px-4 py-3">Canais</th>
+                      <th className="px-4 py-3">Contexto</th>
+                      <th className="px-4 py-3">Motivo</th>
+                      <th className="px-4 py-3">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {gapsByFeature.map((row) => {
+                      const contexts = Array.from(
+                        new Set(row.channels.map((c) => c.context)),
+                      );
+                      const hasBacklog = row.channels.some(
+                        (c) => c.reason === "BACKLOG",
+                      );
+                      const hasUnplanned = row.channels.some(
+                        (c) => c.reason === "NOT_PLANNED",
+                      );
+                      return (
+                        <tr
+                          key={row.featureId}
+                          className="border-t border-[var(--border)] hover:bg-slate-50/80"
                         >
-                          {gap.title}
-                        </Link>
-                      </li>
-                    ))}
+                          <td className="px-4 py-3 align-top">
+                            <Link
+                              href={row.href}
+                              className="font-medium text-slate-900 hover:text-[var(--brand)]"
+                            >
+                              {row.featureName}
+                            </Link>
+                            <p className="mt-0.5 max-w-xs text-xs text-slate-500">
+                              {row.channels.length}{" "}
+                              {row.channels.length === 1
+                                ? "canal"
+                                : "canais"}{" "}
+                              com lacuna de cobertura
+                            </p>
+                          </td>
+                          <td className="px-4 py-3 align-top">
+                            <ul className="space-y-1">
+                              {row.channels.map((ch) => (
+                                <li
+                                  key={`${ch.name}-${ch.context}-${ch.reason}`}
+                                  className="text-xs text-slate-700"
+                                >
+                                  <span className="font-medium">{ch.name}</span>
+                                  <span className="text-slate-500">
+                                    {" · "}
+                                    {featureStageLabel[
+                                      ch.phase as keyof typeof featureStageLabel
+                                    ] ?? ch.phase}
+                                    {ch.expectedDate
+                                      ? ` · ${ch.expectedDate.slice(0, 7)}`
+                                      : ""}
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          </td>
+                          <td className="px-4 py-3 align-top text-xs text-slate-600">
+                            {contexts.join(" · ")}
+                          </td>
+                          <td className="px-4 py-3 align-top">
+                            <div className="flex flex-wrap gap-1">
+                              {hasBacklog ? (
+                                <span className="inline-flex rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-800 ring-1 ring-sky-200">
+                                  Em backlog
+                                </span>
+                              ) : null}
+                              {hasUnplanned ? (
+                                <span className="inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-900 ring-1 ring-amber-200">
+                                  Não prevista
+                                </span>
+                              ) : null}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 align-top">
+                            <div className="flex flex-col gap-1.5">
+                              <Button asChild size="sm" variant="outline">
+                                <Link href={row.href}>Mostrar funcionalidade</Link>
+                              </Button>
+                              {canEdit ? (
+                                <Button asChild size="sm" variant="ghost">
+                                  <Link href={row.href}>Criar evolução</Link>
+                                </Button>
+                              ) : null}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                <p className="border-t border-[var(--border)] px-4 py-2 text-xs text-[var(--muted-foreground)]">
+                  {gapsByFeature.length} funcionalidade
+                  {gapsByFeature.length === 1 ? "" : "s"}
+                  {" · "}
+                  {filteredGaps.length} lacuna
+                  {filteredGaps.length === 1 ? "" : "s"} de canal
+                </p>
+              </SurfaceCard>
+
+              <aside className="space-y-4 xl:sticky xl:top-20 xl:self-start">
+                <SurfaceCard className="p-4">
+                  <SectionTitle>Por motivo (filtro)</SectionTitle>
+                  <ul className="mt-2 space-y-2 text-sm">
+                    <li className="flex justify-between gap-2">
+                      <span>Em backlog</span>
+                      <span className="tabular-nums font-medium">
+                        {filteredBacklogGaps}
+                      </span>
+                    </li>
+                    <li className="flex justify-between gap-2">
+                      <span>Não prevista</span>
+                      <span className="tabular-nums font-medium">
+                        {filteredUnplannedGaps}
+                      </span>
+                    </li>
                   </ul>
                 </SurfaceCard>
-              ))}
+              </aside>
             </div>
-          ) : viewTab === "canal" ? (
-            <SurfaceCard className="p-4 text-sm text-[var(--muted-foreground)]">
-              Agrupe por canal na lista completa — use o filtro de tipo e
-              prioridade para focar oportunidades por contexto.
-            </SurfaceCard>
-          ) : viewTab === "matriz" ? (
-            <SurfaceCard className="overflow-x-auto p-4">
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                {(Object.keys(gapTypeLabel) as GapType[]).map((t) => (
-                  <div
-                    key={t}
-                    className="rounded-xl border border-[var(--border)] px-3 py-3"
-                  >
-                    <p className="text-xs text-[var(--muted-foreground)]">
-                      {gapTypeLabel[t]}
-                    </p>
-                    <p className="mt-1 text-2xl font-semibold">
-                      {filtered.filter((g) => g.type === t).length}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </SurfaceCard>
+          )}
+        </>
+      ) : null}
+
+      {mainTab === "opportunities" ? (
+        <>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-2">
+            <StatCard
+              label={CONCEPT_LABEL.opportunities}
+              value={filteredOpps.length}
+              tone="info"
+              icon={Lightbulb}
+              trend={
+                filteredCriticalOpps > 0
+                  ? `${filteredCriticalOpps} com resultado crítico`
+                  : "A partir de notas baixas"
+              }
+            />
+            <StatCard
+              label="Notas críticas"
+              value={filteredCriticalOpps}
+              tone="danger"
+              trend="No recorte filtrado"
+            />
+          </div>
+
+          <SurfaceCard className="p-4">
+            <div className="flex flex-wrap items-end gap-3">
+              <FilterSelect
+                label="Severidade"
+                value={oppSeverity}
+                onChange={setOppSeverity}
+                options={[
+                  { value: "", label: "Todas" },
+                  { value: "CRITICAL", label: "Crítico" },
+                  { value: "ATTENTION", label: "Atenção" },
+                ]}
+              />
+              <FilterSelect
+                label="Área"
+                value={oppArea}
+                onChange={setOppArea}
+                options={[{ value: "", label: "Todas" }, ...areaOptions]}
+              />
+              <FilterSelect
+                label="Produto"
+                value={oppProductId}
+                onChange={setOppProductId}
+                options={[
+                  { value: "", label: "Todos" },
+                  ...products.map((p) => ({ value: p.id, label: p.name })),
+                ]}
+              />
+              <FilterSelect
+                label="Público"
+                value={oppAudienceId}
+                onChange={setOppAudienceId}
+                options={[
+                  { value: "", label: "Todos" },
+                  ...audiences.map((a) => ({ value: a.id, label: a.name })),
+                ]}
+              />
+              <FilterSelect
+                label="Canal"
+                value={oppChannel}
+                onChange={setOppChannel}
+                options={[{ value: "", label: "Todos" }, ...channelOptions]}
+              />
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={clearOppFilters}
+              >
+                Limpar filtros
+              </Button>
+            </div>
+          </SurfaceCard>
+
+          <p className="text-sm text-[var(--muted-foreground)]">
+            Possibilidades de melhoria identificadas a partir de evidências,
+            problemas e necessidades. Respondem: onde podemos melhorar?
+          </p>
+
+          {filteredOpps.length === 0 ? (
+            <EmptyState
+              icon={Lightbulb}
+              title={`Nenhuma ${CONCEPT_LABEL.opportunity.toLowerCase()} encontrada.`}
+              description="Não há notas baixas nas avaliações no recorte atual."
+            />
           ) : (
-            <SurfaceCard className="overflow-x-auto">
-              <table className="min-w-full text-left text-sm">
-                <thead className="bg-slate-50 text-xs tracking-wide text-[var(--muted-foreground)] uppercase">
-                  <tr>
-                    <th className="px-4 py-3">Título</th>
-                    <th className="px-4 py-3">Tipo de gap</th>
-                    <th className="px-4 py-3">Jornada</th>
-                    <th className="px-4 py-3">Público</th>
-                    <th className="px-4 py-3">Impacto</th>
-                    <th className="px-4 py-3">Prioridade</th>
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3">Ações</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((gap) => (
-                    <tr
-                      key={gap.id}
-                      className="border-t border-[var(--border)] hover:bg-slate-50/80"
-                    >
-                      <td className="px-4 py-3">
-                        <Link
-                          href={`/gaps/${gap.id}`}
-                          className="font-medium text-slate-900 hover:text-[var(--brand)]"
-                        >
-                          {gap.title}
-                        </Link>
-                        <p className="mt-0.5 max-w-xs truncate text-xs text-slate-500">
-                          {gap.description || gap.responsible || "—"}
+            <div className="space-y-3">
+              {filteredOpps.map((op) => (
+                <SurfaceCard key={`${op.featureId}-${op.id}`} className="p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-semibold text-slate-900">
+                          {op.title}
                         </p>
-                      </td>
-                      <td className="px-4 py-3">
                         <span
                           className={cn(
                             "inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1",
-                            TYPE_BADGE[gap.type],
+                            op.severity === "CRITICAL"
+                              ? "bg-rose-50 text-rose-800 ring-rose-200"
+                              : "bg-amber-50 text-amber-900 ring-amber-200",
                           )}
                         >
-                          {gapTypeLabel[gap.type]}
+                          {SIGNAL_LABEL[op.severity] ?? op.severity}
                         </span>
-                      </td>
-                      <td className="px-4 py-3 text-xs text-slate-600">
-                        {journeyNameById[gap.journeyId] || "—"}
-                      </td>
-                      <td className="px-4 py-3 text-xs">
-                        {audiences.find((a) => a.id === gap.audienceId)?.name ||
-                          "—"}
-                      </td>
-                      <td className="px-4 py-3 text-xs">
-                        {priorityLabel[gap.impact]}
-                      </td>
-                      <td className="px-4 py-3">
-                        <PriorityBadge priority={gap.priority} />
-                      </td>
-                      <td className="px-4 py-3 text-xs text-slate-600">
-                        {gapStatusLabel[gap.status as GapStatus]}
-                      </td>
-                      <td className="px-4 py-3">
-                        <button
-                          type="button"
-                          className="rounded p-1 text-slate-400 hover:bg-slate-100"
-                          aria-label="Ações"
+                      </div>
+                      <p className="mt-1 text-sm text-slate-600">{op.summary}</p>
+                      <p className="mt-2 text-xs text-slate-500">
+                        <Link
+                          href={op.href}
+                          className="font-medium text-[var(--brand)] hover:underline"
                         >
-                          <MoreHorizontal className="h-4 w-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <p className="border-t border-[var(--border)] px-4 py-2 text-xs text-[var(--muted-foreground)]">
-                Mostrando {filtered.length} de {filtered.length} gaps
-              </p>
-            </SurfaceCard>
-          )}
-
-          <SurfaceCard className="mt-4 flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm font-semibold text-slate-900">
-                Quer sugerir uma nova oportunidade?
-              </p>
-              <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">
-                Compartilhe um insight ou ideia de melhoria para evoluirmos
-                juntos a experiência da CAIXA Consórcio.
-              </p>
-            </div>
-            <Button asChild size="sm">
-              <Link href="/cadastros/gaps">
-                <Plus className="h-3.5 w-3.5" />
-                Nova oportunidade
-              </Link>
-            </Button>
-          </SurfaceCard>
-        </div>
-
-        <aside className="space-y-4 xl:sticky xl:top-20 xl:self-start">
-          <SurfaceCard className="p-4">
-            <SectionTitle>Gaps por tipo</SectionTitle>
-            <ul className="space-y-2">
-              {chartByType.map((slice) => (
-                <li
-                  key={slice.type}
-                  className="flex items-center justify-between gap-2 text-xs"
-                >
-                  <span className="flex min-w-0 items-center gap-1.5">
-                    <span
-                      className="h-2 w-2 shrink-0 rounded-full"
-                      style={{ background: slice.color }}
-                    />
-                    <span className="truncate">{slice.label}</span>
-                  </span>
-                  <span className="tabular-nums text-slate-500">
-                    {Math.round((slice.count / typeTotal) * 100)}%
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </SurfaceCard>
-
-          <SurfaceCard className="p-4">
-            <SectionTitle>Gaps por prioridade</SectionTitle>
-            <div className="space-y-3">
-              {chartByPriority.map((item) => (
-                <div key={item.priority}>
-                  <div className="mb-1 flex justify-between text-xs">
-                    <span className="font-medium text-slate-700">
-                      {item.label}
-                    </span>
-                    <span className="tabular-nums text-slate-500">
-                      {item.share}%
-                    </span>
+                          {op.featureName}
+                        </Link>
+                        {" · "}
+                        {op.channelName}
+                        {op.audienceName ? ` · ${op.audienceName}` : ""}
+                        {op.productShortName
+                          ? ` · ${op.productShortName}`
+                          : ""}
+                        {" · "}
+                        Áreas:{" "}
+                        {op.areas.map((a) => evaluationAreaLabel(a)).join(", ")}
+                        {" · "}
+                        Origem: {op.origin}
+                      </p>
+                      {op.evidence.length > 0 ? (
+                        <p className="mt-1 text-xs text-slate-500">
+                          Evidências: {op.evidence.slice(0, 2).join(" · ")}
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {canEdit ? (
+                        <Button asChild size="sm">
+                          <Link href={op.href}>Criar evolução</Link>
+                        </Button>
+                      ) : null}
+                      <Button asChild size="sm" variant="outline">
+                        <Link href={op.href}>Mostrar funcionalidade</Link>
+                      </Button>
+                    </div>
                   </div>
-                  <ProgressBar
-                    value={item.pct}
-                    barClassName={
-                      item.priority === "CRITICAL"
-                        ? "bg-rose-500"
-                        : item.priority === "HIGH"
-                          ? "bg-amber-500"
-                          : item.priority === "MEDIUM"
-                            ? "bg-[var(--brand)]"
-                            : "bg-slate-400"
-                    }
-                  />
-                </div>
+                </SurfaceCard>
               ))}
             </div>
+          )}
+        </>
+      ) : null}
+
+      {mainTab === "issues" ? (
+        <>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <StatCard
+              label={CONCEPT_LABEL.issues}
+              value={filteredIssues.length}
+              tone="warning"
+              icon={AlertTriangle}
+              trend={`${filteredOpenIssues} abertas no filtro`}
+            />
+            <StatCard
+              label="Abertas / em tratamento"
+              value={filteredOpenIssues}
+              tone="accent"
+              trend="No recorte filtrado"
+            />
+            <StatCard
+              label="Críticas (impacto/prioridade)"
+              value={filteredCriticalIssues}
+              tone="danger"
+              trend="No recorte filtrado"
+            />
+          </div>
+
+          <SurfaceCard className="p-4">
+            <div className="flex flex-wrap items-end gap-3">
+              <FilterSelect
+                label="Status do problema"
+                value={issueStatus}
+                onChange={setIssueStatus}
+                options={[
+                  { value: "", label: "Todos" },
+                  ...Object.entries(gapStatusLabel).map(([value, label]) => ({
+                    value,
+                    label,
+                  })),
+                ]}
+              />
+              <FilterSelect
+                label="Tipo"
+                value={issueType}
+                onChange={setIssueType}
+                options={[
+                  { value: "", label: "Todos" },
+                  ...Object.entries(gapTypeLabel).map(([value, label]) => ({
+                    value,
+                    label,
+                  })),
+                ]}
+              />
+              <FilterSelect
+                label="Impacto"
+                value={issueImpact}
+                onChange={setIssueImpact}
+                options={[
+                  { value: "", label: "Todos" },
+                  ...Object.entries(priorityLabel).map(([value, label]) => ({
+                    value,
+                    label,
+                  })),
+                ]}
+              />
+              <FilterSelect
+                label="Público"
+                value={issueAudienceId}
+                onChange={setIssueAudienceId}
+                options={[
+                  { value: "", label: "Todos" },
+                  ...audiences.map((a) => ({ value: a.id, label: a.name })),
+                ]}
+              />
+              <FilterSelect
+                label="Jornada"
+                value={issueJourneyId}
+                onChange={setIssueJourneyId}
+                options={[
+                  { value: "", label: "Todas" },
+                  ...journeys.map((j) => ({ value: j.id, label: j.name })),
+                ]}
+              />
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={clearIssueFilters}
+              >
+                Limpar filtros
+              </Button>
+            </div>
           </SurfaceCard>
-        </aside>
-      </div>
+
+          <p className="text-sm text-[var(--muted-foreground)]">
+            Fricções, falhas e dificuldades identificadas na experiência.
+            Distintos das {CONCEPT_LABEL.lacunas.toLowerCase()} e das{" "}
+            {CONCEPT_LABEL.opportunities.toLowerCase()}. Respondem: o que está
+            funcionando mal?
+          </p>
+
+          {filteredIssues.length === 0 ? (
+            <EmptyState
+              icon={AlertTriangle}
+              title={`Nenhum ${CONCEPT_LABEL.problema.toLowerCase()} cadastrado.`}
+              description={`Não há ${CONCEPT_LABEL.problemas.toLowerCase()} no recorte atual. Cadastro em Configurações › ${CONCEPT_LABEL.problemas} (admin).`}
+            />
+          ) : (
+            <div className="space-y-3">
+              {filteredIssues.map((issue) => (
+                <SurfaceCard key={issue.id} className="p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="inline-flex rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700 ring-1 ring-slate-200 uppercase">
+                          {CONCEPT_LABEL.issue}
+                        </span>
+                        <p className="text-sm font-semibold text-slate-900">
+                          {issue.title}
+                        </p>
+                        <PriorityBadge priority={issue.priority} />
+                        <span className="text-[11px] text-slate-500">
+                          {gapTypeLabel[issue.type]} ·{" "}
+                          {gapStatusLabel[issue.status]}
+                        </span>
+                      </div>
+                      {issue.description ? (
+                        <p className="mt-1 line-clamp-2 text-sm text-slate-600">
+                          {issue.description}
+                        </p>
+                      ) : null}
+                      <p className="mt-2 text-xs text-slate-500">
+                        {issue.audienceName}
+                        {" · "}
+                        {issue.journeyName}
+                        {issue.featureName ? (
+                          <>
+                            {" · "}
+                            {issue.featureHref ? (
+                              <Link
+                                href={issue.featureHref}
+                                className="font-medium text-[var(--brand)] hover:underline"
+                              >
+                                {issue.featureName}
+                              </Link>
+                            ) : (
+                              issue.featureName
+                            )}
+                          </>
+                        ) : null}
+                        {" · "}
+                        Impacto: {priorityLabel[issue.impact]}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button asChild size="sm" variant="outline">
+                        <Link href={issue.href}>
+                          Mostrar {CONCEPT_LABEL.problema.toLowerCase()}
+                        </Link>
+                      </Button>
+                      {canEdit && issue.featureHref ? (
+                        <Button asChild size="sm" variant="ghost">
+                          <Link href={issue.featureHref}>Criar evolução</Link>
+                        </Button>
+                      ) : null}
+                      {canEdit &&
+                      (issue.status === "OPEN" ||
+                        issue.status === "IN_PROGRESS") ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={pending}
+                          onClick={() => resolveIssue(issue)}
+                        >
+                          Resolver
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+                </SurfaceCard>
+              ))}
+            </div>
+          )}
+        </>
+      ) : null}
     </div>
   );
 }

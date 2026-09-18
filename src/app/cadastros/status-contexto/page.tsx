@@ -17,6 +17,7 @@ import {
   featureStageOptions,
   featureStatusOptions,
 } from "@/lib/labels";
+import { PageBreadcrumb } from "@/components/ui/prototype";
 import { getDatabase } from "@/services/db";
 
 export default async function StatusContextoPage({
@@ -43,10 +44,14 @@ export default async function StatusContextoPage({
     <div className="space-y-6">
       <div className="space-y-3">
         <BackButton href="/configuracoes?tab=cadastros" />
-        <div>
-          <p className="text-xs font-semibold tracking-[0.14em] text-[var(--brand)] uppercase">
-            Cadastros
-          </p>
+        <div className="space-y-1">
+          <PageBreadcrumb
+            items={[
+              { label: "Configurações", href: "/configuracoes" },
+              { label: "Cadastros", href: "/configuracoes?tab=cadastros" },
+              { label: "Status por contexto" },
+            ]}
+          />
           <h1 className="font-[family-name:var(--font-display)] text-2xl font-semibold">
             Status por contexto
           </h1>
@@ -108,6 +113,13 @@ export default async function StatusContextoPage({
                 label="Responsável"
                 name="responsible"
                 defaultValue={editing?.responsible}
+              />
+              <Field
+                label="Ticket TI"
+                name="ticket_number"
+                defaultValue={editing?.ticketNumber ?? ""}
+                placeholder="Ex.: CHM-123456"
+                hint="Número do chamado/ticket aberto para acompanhamento da implementação junto à TI."
               />
               <Field
                 label="Início"

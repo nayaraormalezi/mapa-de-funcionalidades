@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { FeatureMatrix } from "@/components/map/feature-matrix";
 import { FeatureRow } from "@/components/map/feature-row";
 import { NovaFuncionalidadeModal } from "@/components/map/nova-funcionalidade-modal";
@@ -15,18 +16,18 @@ import {
   SurfaceCard,
   UnderlineTabs,
 } from "@/components/ui/prototype";
+import { useAuth } from "@/components/auth/auth-provider";
 import { useMapFilters } from "@/hooks/use-map-filters";
 import {
   FEATURE_STAGE_ORDER,
-  experienceLabel,
   featureStageLabel,
   featureStageOptions,
   featureStatusOptions,
   priorityLabel,
 } from "@/lib/labels";
+import { SIGNAL_LABEL, type SignalLevel } from "@/lib/health";
 import { cn } from "@/lib/utils";
 import type {
-  ExperienceLevel,
   FeatureMapRow,
   FeatureStage,
   FeatureStatus,
@@ -48,7 +49,7 @@ import {  ChevronLeft,
 
 type Option = { value: string; label: string };
 type JourneyOption = Option & { momentIds: string[] };
-type NeedOption = Option & { journeyId: string };
+type NeedOption = Option & { journeyId: string; audienceIds?: string[] };
 
 const legendDot: Record<FeatureStage, string> = {
   BACKLOG: "bg-[#005ca9]",
@@ -130,8 +131,11 @@ export function MapaClient({
   journeys,
   needs,
   channels,
+  channelContexts = [],
+  journeyAudienceStages = [],
   products,
   responsibles,
+  existingFeatures = [],
 }: {
   rows: FeatureMapRow[];
   audiences: Option[];
@@ -139,9 +143,24 @@ export function MapaClient({
   journeys: JourneyOption[];
   needs: NeedOption[];
   channels: Option[];
+  channelContexts?: {
+    audienceId: string;
+    momentId: string;
+    channelId: string;
+  }[];
+  journeyAudienceStages?: {
+    audienceId: string;
+    journeyId: string;
+    momentId: string;
+    displayName: string;
+    sortOrder: number;
+  }[];
   products: Option[];
   responsibles: Option[];
+  existingFeatures?: (Option & { description?: string })[];
 }) {
+  const router = useRouter();
+  const { canEdit } = useAuth();
   const defaultAudience =
     audiences.find((a) => /cliente/i.test(a.label))?.value ?? "";
   const defaultMoment =
@@ -163,7 +182,7 @@ export function MapaClient({
 
   const statusOptions = featureStatusOptions();
   const stageOptions = featureStageOptions();
-  const experienceOptions = Object.entries(experienceLabel).map(
+  const healthSignalOptions = Object.entries(SIGNAL_LABEL).map(
     ([value, label]) => ({ value, label }),
   );
   const priorityOptions = Object.entries(priorityLabel).map(
@@ -226,14 +245,16 @@ export function MapaClient({
   return (
     <div className="space-y-5">
       <PageHeader
-        breadcrumb="Mapa de funcionalidades › Visão geral"
-        title="Mapa de Funcionalidades"
-        description="Explore as funcionalidades por público, momento da jornada e canal. Entenda o que já existe, o que está em desenvolvimento e onde estão os gaps."
+        breadcrumb={[{ label: "Funcionalidades" }]}
+        title="Funcionalidades"
+        description="Explore e acompanhe as funcionalidades por público, momento da jornada e canal."
         actions={
-          <Button type="button" size="sm" onClick={() => setModalOpen(true)}>
-            <Plus className="h-3.5 w-3.5" />
-            Nova funcionalidade
-          </Button>
+          canEdit ? (
+            <Button type="button" size="sm" onClick={() => setModalOpen(true)}>
+              <Plus className="h-3.5 w-3.5" />
+              Nova funcionalidade
+            </Button>
+          ) : undefined
         }
       />
 
@@ -288,15 +309,15 @@ export function MapaClient({
         {moreFilters ? (
           <div className="mt-3 grid gap-3 border-t border-[var(--border)] pt-3 sm:grid-cols-2 lg:grid-cols-4">
             <FilterSelect
-              label="Experiência"
-              value={filters.experiences[0] ?? ""}
+              label="Health"
+              value={filters.healthSignals[0] ?? ""}
               onChange={(v) =>
                 updateFilter(
-                  "experiences",
-                  v ? ([v] as ExperienceLevel[]) : [],
+                  "healthSignals",
+                  v ? ([v] as SignalLevel[]) : [],
                 )
               }
-              options={[{ value: "", label: "Todas" }, ...experienceOptions]}
+              options={[{ value: "", label: "Todos" }, ...healthSignalOptions]}
             />
             <FilterSelect
               label="Prioridade"
@@ -586,15 +607,21 @@ export function MapaClient({
         </>
       ) : null}
 
-      <NovaFuncionalidadeModal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        audiences={audiences}
-        moments={moments}
-        journeys={journeys}
-        needs={needs}
-        channels={channels}
-      />
+      {canEdit ? (
+        <NovaFuncionalidadeModal
+          open={modalOpen}
+          onClose={() => setModalOpen(false)}
+          audiences={audiences}
+          moments={moments}
+          journeys={journeys}
+          needs={needs}
+          channels={channels}
+          channelContexts={channelContexts}
+          journeyAudienceStages={journeyAudienceStages}
+          existingFeatures={existingFeatures}
+          onCreated={() => router.refresh()}
+        />
+      ) : null}
     </div>
   );
 }

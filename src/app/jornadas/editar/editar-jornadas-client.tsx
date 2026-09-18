@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   archiveJourneyAudienceStage,
@@ -14,7 +13,6 @@ import {
   SurfaceCard,
   UnderlineTabs,
 } from "@/components/ui/prototype";
-import { cn } from "@/lib/utils";
 import type { JourneyAudienceStage } from "@/types";
 import { Plus, Trash2 } from "lucide-react";
 
@@ -22,7 +20,10 @@ type Option = { value: string; label: string };
 
 type StageDraft = {
   id: string;
+  /** Jornada canônica. */
   journeyId: string;
+  /** Etapa do catálogo (JourneyStage). */
+  journeyStageId: string;
   displayName: string;
   sortOrder: number;
   momentId: string;
@@ -33,13 +34,15 @@ export function EditarJornadasClient({
   audienceId,
   audienceName,
   moments,
-  catalogJourneys,
+  catalogJourneyId,
+  catalogStages,
   stages,
 }: {
   audienceId: string;
   audienceName: string;
   moments: Option[];
-  catalogJourneys: Option[];
+  catalogJourneyId: string;
+  catalogStages: Option[];
   stages: JourneyAudienceStage[];
 }) {
   const router = useRouter();
@@ -57,7 +60,8 @@ export function EditarJornadasClient({
       .filter((s) => s.audienceId === audienceId && s.active)
       .map((s) => ({
         id: s.id,
-        journeyId: s.journeyId,
+        journeyId: s.journeyId || catalogJourneyId,
+        journeyStageId: s.journeyStageId ?? "",
         displayName: s.displayName,
         sortOrder: s.sortOrder,
         momentId: s.momentId,
@@ -81,13 +85,14 @@ export function EditarJornadasClient({
   function addRow() {
     const nextOrder =
       rows.reduce((max, r) => Math.max(max, r.sortOrder), 0) + 1;
-    const catalog = catalogJourneys[0];
+    const stage = catalogStages[0];
     setDrafts((prev) => [
       ...prev,
       {
         id: `new-${crypto.randomUUID().slice(0, 8)}`,
-        journeyId: catalog?.value ?? "",
-        displayName: catalog?.label ?? "",
+        journeyId: catalogJourneyId,
+        journeyStageId: stage?.value ?? "",
+        displayName: stage?.label ?? "",
         sortOrder: nextOrder,
         momentId,
         isNew: true,
@@ -99,14 +104,15 @@ export function EditarJornadasClient({
     setMessage(null);
     startTransition(async () => {
       for (const row of rows) {
-        if (!row.journeyId || !row.displayName.trim()) {
-          setMessage("Preencha etapa do catálogo e nome exibido.");
+        if (!row.journeyStageId || !row.displayName.trim()) {
+          setMessage("Preencha a etapa do catálogo e o nome exibido.");
           return;
         }
         const fd = new FormData();
         if (!row.isNew) fd.set("id", row.id);
         fd.set("audience_id", audienceId);
-        fd.set("journey_id", row.journeyId);
+        fd.set("journey_id", row.journeyId || catalogJourneyId);
+        fd.set("journey_stage_id", row.journeyStageId);
         fd.set("display_name", row.displayName.trim());
         fd.set("sort_order", String(row.sortOrder));
         fd.set("moment_id", row.momentId);
@@ -142,38 +148,22 @@ export function EditarJornadasClient({
   return (
     <div className="space-y-5">
       <PageHeader
-        breadcrumb="Jornadas › Editar"
-        title={`Jornada do ${audienceName}`}
-        description="Customize as etapas desta jornada por momento. O catálogo de etapas é compartilhado; o nome e a ordem podem variar por público."
-        leading={
-          <div className="flex flex-wrap items-center gap-2">
-            <BackButton href="/jornadas" />
-            <Button asChild variant="ghost" size="sm">
-              <Link href="/cadastros/jornadas">Catálogo global</Link>
-            </Button>
-          </div>
-        }
+        breadcrumb={[
+          { label: "Jornadas", href: "/jornadas" },
+          { label: "Editar" },
+        ]}
+        title={`Jornada · ${audienceName}`}
+        description="Customize rótulo, ordem e momento das etapas canônicas por público. A estrutura da jornada é compartilhada."
+        leading={<BackButton href="/jornadas" />}
       />
 
       <SurfaceCard className="p-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <UnderlineTabs
-            value={momentId}
-            onChange={setMomentId}
-            options={moments.map((m) => ({ id: m.value, label: m.label }))}
-            className="border-b-0"
-          />
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={addRow}
-            disabled={pending || catalogJourneys.length === 0}
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Adicionar etapa
-          </Button>
-        </div>
+        <UnderlineTabs
+          value={momentId}
+          onChange={setMomentId}
+          options={moments.map((m) => ({ id: m.value, label: m.label }))}
+          className="border-b-0"
+        />
 
         <div className="mt-4 space-y-3">
           {rows.length === 0 ? (
@@ -200,22 +190,24 @@ export function EditarJornadasClient({
                   />
                 </label>
                 <label className="space-y-1 text-xs font-medium text-slate-600">
-                  Etapa do catálogo
+                  Etapa (catálogo)
                   <select
-                    value={row.journeyId}
+                    value={row.journeyStageId}
                     onChange={(e) => {
-                      const journeyId = e.target.value;
+                      const journeyStageId = e.target.value;
                       const label =
-                        catalogJourneys.find((j) => j.value === journeyId)
+                        catalogStages.find((j) => j.value === journeyStageId)
                           ?.label ?? "";
                       updateRow(row.id, {
-                        journeyId,
-                        displayName: row.displayName || label,
+                        journeyStageId,
+                        displayName: label || row.displayName,
+                        journeyId: catalogJourneyId,
                       });
                     }}
-                    className="h-9 w-full rounded-lg border border-[var(--border)] bg-white px-2 text-sm"
+                    className="h-9 w-full rounded-lg border border-[var(--border)] px-2 text-sm"
                   >
-                    {catalogJourneys.map((j) => (
+                    <option value="">Selecione</option>
+                    {catalogStages.map((j) => (
                       <option key={j.value} value={j.value}>
                         {j.label}
                       </option>
@@ -223,47 +215,54 @@ export function EditarJornadasClient({
                   </select>
                 </label>
                 <label className="space-y-1 text-xs font-medium text-slate-600">
-                  Nome exibido para {audienceName}
+                  Nome exibido
                   <input
                     value={row.displayName}
                     onChange={(e) =>
                       updateRow(row.id, { displayName: e.target.value })
                     }
-                    placeholder="Ex.: Venda"
                     className="h-9 w-full rounded-lg border border-[var(--border)] px-2 text-sm"
                   />
                 </label>
-                <div className="flex items-end justify-end">
-                  <button
+                <div className="flex items-end">
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="text-rose-600"
                     onClick={() => removeRow(row)}
                     disabled={pending}
-                    className="inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-xs font-medium text-rose-600 hover:bg-rose-50"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
-                    Remover
-                  </button>
+                  </Button>
                 </div>
               </div>
             ))
           )}
         </div>
 
-        <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border)] pt-4">
-          <p
-            className={cn(
-              "text-xs",
-              message?.includes("salva") || message?.includes("removida")
-                ? "text-emerald-700"
-                : "text-slate-500",
-            )}
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={addRow}
+            disabled={pending || catalogStages.length === 0}
           >
-            {message ??
-              "As alterações deste momento são salvas ao clicar em Salvar."}
-          </p>
-          <Button type="button" size="sm" onClick={saveAll} disabled={pending}>
+            <Plus className="h-3.5 w-3.5" />
+            Adicionar etapa
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            onClick={saveAll}
+            disabled={pending || rows.length === 0}
+          >
             {pending ? "Salvando…" : "Salvar"}
           </Button>
+          {message ? (
+            <p className="text-sm text-[var(--muted-foreground)]">{message}</p>
+          ) : null}
         </div>
       </SurfaceCard>
     </div>

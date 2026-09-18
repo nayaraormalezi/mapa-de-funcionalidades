@@ -5,7 +5,7 @@ import {
   getChannels,
   getMoments,
 } from "@/services/channels";
-import { getGaps } from "@/services/gaps";
+import { getIssues } from "@/services/gaps";
 import type {
   ChannelComparison,
   Feature,
@@ -13,6 +13,18 @@ import type {
   TransformationSummary,
 } from "@/types";
 import { getFeatures } from "@/services/features";
+
+/**
+ * Transformation / Comparison — análises de cobertura de canal.
+ *
+ * Fontes canônicas:
+ * - Implementation: FeatureMapRow / FeatureChannelContext
+ * - ChannelContext CURRENT|FUTURE
+ * - Issues: getIssues() (persistidas)
+ *
+ * NÃO calcula Health próprio.
+ * NÃO persiste Evolution nem cria entidade de trabalho.
+ */
 
 function isPresent(phase: string) {
   return phase !== "REMOVED";
@@ -174,7 +186,7 @@ export async function compareChannels(
   const onlyA = new Set([...idsA].filter((id) => !idsB.has(id)));
   const onlyB = new Set([...idsB].filter((id) => !idsA.has(id)));
 
-  const gaps = (await getGaps()).filter(
+  const issues = (await getIssues()).filter(
     (g) =>
       g.currentChannelId === channelAId ||
       g.currentChannelId === channelBId ||
@@ -188,7 +200,7 @@ export async function compareChannels(
     common: toFeatures(commonIds),
     onlyA: toFeatures(onlyA),
     onlyB: toFeatures(onlyB),
-    gaps,
+    issues,
   };
 }
 

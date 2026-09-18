@@ -1,10 +1,15 @@
 "use client";
 
+/**
+ * UI de Comparison (Canal × Canal).
+ * Consumida por `/inteligencia/comparacoes`.
+ * Pasta `/comparacao` mantida por compatibilidade de import — não é módulo de 1º nível.
+ */
 import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
-import { ExperienceBadge } from "@/components/badges/experience-badge";
+import { HealthBadge } from "@/components/badges/health-badge";
 import { StatusBadge } from "@/components/badges/status-badge";
-import { GapCard } from "@/components/gaps/gap-card";
+import { IssueCard } from "@/components/gaps/gap-card";
 import {
   Card,
   CardContent,
@@ -12,25 +17,44 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { CONCEPT_LABEL } from "@/lib/labels";
 import { formatPercent } from "@/lib/utils";
-import type { ChannelComparison, FeatureMapRow, Gap } from "@/types";
+import type { ChannelComparison, FeatureMapRow, Issue } from "@/types";
+import {
+  InsightsFoundSection,
+  type InsightCardProps,
+} from "@/components/intelligence/insight-card";
+import { IntelligenceNav } from "@/components/intelligence/intelligence-nav";
+import { PageHeader } from "@/components/ui/prototype";
 
 type ChannelOption = { id: string; name: string };
+
+type HealthDiff = {
+  featureId: string;
+  featureName: string;
+  statusA: FeatureMapRow["status"];
+  statusB: FeatureMapRow["status"];
+  healthScoreA: number | null;
+  healthScoreB: number | null;
+  healthSignalA: FeatureMapRow["healthSignal"];
+  healthSignalB: FeatureMapRow["healthSignal"];
+  differentStatus: boolean;
+  differentHealth: boolean;
+};
 
 type AdvancedComparison = {
   commonCount: number;
   onlyACount: number;
   onlyBCount: number;
   parityPercent: number;
-  experienceDiffs: {
+  healthDiffs?: HealthDiff[];
+  /** @deprecated Prefer healthDiffs */
+  experienceDiffs?: {
     featureId: string;
     featureName: string;
     statusA: FeatureMapRow["status"];
     statusB: FeatureMapRow["status"];
-    experienceA: FeatureMapRow["experience"];
-    experienceB: FeatureMapRow["experience"];
     differentStatus: boolean;
-    differentExperience: boolean;
   }[];
   common: FeatureMapRow[];
   onlyA: FeatureMapRow[];
@@ -72,21 +96,74 @@ export function ComparacaoClient({
 
   const nameA = channels.find((c) => c.id === channelA)?.name ?? "Canal A";
   const nameB = channels.find((c) => c.id === channelB)?.name ?? "Canal B";
+  const healthDiffs = advanced?.healthDiffs ?? [];
+
+  const comparisonInsights: InsightCardProps[] = [];
+  if (advanced) {
+    if (advanced.onlyACount > 0) {
+      comparisonInsights.push({
+        title: `${advanced.onlyACount} funcionalidade(s) só em ${nameA}`,
+        description: `Presentes em ${nameA} e ausentes em ${nameB}.`,
+        severity: "watch",
+        origin: "COMPARISON",
+        context: `${nameA} × ${nameB}`,
+        href: advanced.onlyA[0]
+          ? `/funcionalidades/${advanced.onlyA[0].featureId}`
+          : undefined,
+        actionLabel: "Abrir funcionalidades",
+        metric: String(advanced.onlyACount),
+      });
+    }
+    if (advanced.onlyBCount > 0) {
+      comparisonInsights.push({
+        title: `${advanced.onlyBCount} funcionalidade(s) só em ${nameB}`,
+        description: `Presentes em ${nameB} e ausentes em ${nameA}.`,
+        severity: "watch",
+        origin: "COMPARISON",
+        context: `${nameA} × ${nameB}`,
+        metric: String(advanced.onlyBCount),
+      });
+    }
+  }
+  const statusDiffs = healthDiffs.filter((d) => d.differentStatus);
+  if (statusDiffs.length > 0) {
+    comparisonInsights.push({
+      title: `${statusDiffs.length} funcionalidade(s) com status diferentes entre os canais`,
+      description: `Há divergência de prazo/status entre ${nameA} e ${nameB}.`,
+      severity: "warning",
+      origin: "COMPARISON",
+      context: `${nameA} × ${nameB}`,
+      href: `/funcionalidades/${statusDiffs[0]!.featureId}`,
+      actionLabel: "Investigar",
+      metric: String(statusDiffs.length),
+    });
+  }
+  const healthScoreDiffs = healthDiffs.filter((d) => d.differentHealth);
+  if (healthScoreDiffs.length > 0) {
+    comparisonInsights.push({
+      title: `${healthScoreDiffs.length} funcionalidade(s) com Health divergente`,
+      description: "A mesma funcionalidade apresenta sinais de experiência diferentes entre os canais.",
+      severity: "warning",
+      origin: "COMPARISON",
+      context: `${nameA} × ${nameB}`,
+      href: `/funcionalidades/${healthScoreDiffs[0]!.featureId}`,
+      actionLabel: "Investigar",
+      metric: String(healthScoreDiffs.length),
+    });
+  }
 
   return (
     <div className="space-y-6">
-      <section className="space-y-2">
-        <p className="text-xs font-semibold tracking-[0.14em] text-[var(--brand)] uppercase">
-          Comparação de canais · Inteligência
-        </p>
-        <h1 className="font-[family-name:var(--font-display)] text-3xl font-semibold tracking-tight">
-          Comparar cobertura entre canais
-        </h1>
-        <p className="max-w-3xl text-sm text-[var(--muted-foreground)]">
-          Identifique funcionalidades comuns, exclusivas, diferenças de
-          experiência e gaps — útil para migração Atual × Futuro.
-        </p>
-      </section>
+      <PageHeader
+        breadcrumb={[
+          { label: "Inteligência", href: "/inteligencia" },
+          { label: "Comparações" },
+        ]}
+        title="Comparar cobertura entre canais"
+        description={`Análise Canal × Canal sobre Implementations existentes. Health vem das Evaluations; ${CONCEPT_LABEL.issues.toLowerCase()} vêm do catálogo persistido — sem fórmulas paralelas.`}
+      />
+
+      <IntelligenceNav />
 
       <Card>
         <CardHeader>
@@ -135,7 +212,7 @@ export function ComparacaoClient({
       {advanced ? (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <MetricCard
-            label="Paridade"
+            label="Paridade de cobertura"
             value={formatPercent(advanced.parityPercent)}
           />
           <MetricCard label="Comuns" value={String(advanced.commonCount)} />
@@ -149,6 +226,15 @@ export function ComparacaoClient({
           />
         </div>
       ) : null}
+
+      {advanced || comparison ? (
+        <InsightsFoundSection insights={comparisonInsights} />
+      ) : (
+        <p className="text-sm text-[var(--muted-foreground)]">
+          Nenhuma comparação realizada. Selecione dois canais para identificar
+          diferenças.
+        </p>
+      )}
 
       {comparison ? (
         <>
@@ -170,16 +256,17 @@ export function ComparacaoClient({
             />
           </div>
 
-          {advanced && advanced.experienceDiffs.length > 0 ? (
+          {healthDiffs.length > 0 ? (
             <Card>
               <CardHeader>
-                <CardTitle>Diferenças de status/experiência</CardTitle>
+                <CardTitle>Diferenças de status / Health</CardTitle>
                 <CardDescription>
-                  Funcionalidades comuns com qualidade ou status divergente.
+                  Funcionalidades comuns com Health canônico (Evaluation) ou
+                  status de prazo divergente.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-2">
-                {advanced.experienceDiffs.map((diff) => (
+                {healthDiffs.map((diff) => (
                   <div
                     key={diff.featureId}
                     className="grid gap-2 rounded-lg border border-[var(--border)] px-3 py-3 md:grid-cols-[1.2fr_1fr_1fr]"
@@ -195,14 +282,20 @@ export function ComparacaoClient({
                         {nameA}
                       </span>
                       <StatusBadge status={diff.statusA} />
-                      <ExperienceBadge experience={diff.experienceA} />
+                      <HealthBadge
+                        score={diff.healthScoreA}
+                        signal={diff.healthSignalA}
+                      />
                     </div>
                     <div className="flex flex-wrap gap-1">
                       <span className="text-[10px] text-[var(--muted-foreground)]">
                         {nameB}
                       </span>
                       <StatusBadge status={diff.statusB} />
-                      <ExperienceBadge experience={diff.experienceB} />
+                      <HealthBadge
+                        score={diff.healthScoreB}
+                        signal={diff.healthSignalB}
+                      />
                     </div>
                   </div>
                 ))}
@@ -212,16 +305,17 @@ export function ComparacaoClient({
 
           <section className="space-y-3">
             <h2 className="font-[family-name:var(--font-display)] text-xl font-semibold">
-              Gaps relacionados
+              {CONCEPT_LABEL.issues} relacionadas
             </h2>
-            {comparison.gaps.length === 0 ? (
+            {comparison.issues.length === 0 ? (
               <p className="text-sm text-[var(--muted-foreground)]">
-                Nenhum gap associado a esses canais.
+                Nenhuma {CONCEPT_LABEL.issue.toLowerCase()} associada a esses
+                canais.
               </p>
             ) : (
               <div className="grid gap-3 md:grid-cols-2">
-                {comparison.gaps.map((gap: Gap) => (
-                  <GapCard key={gap.id} gap={gap} />
+                {comparison.issues.map((issue: Issue) => (
+                  <IssueCard key={issue.id} issue={issue} />
                 ))}
               </div>
             )}
@@ -274,7 +368,7 @@ function FeatureListCard({
                   {feature.name}
                 </Link>
                 {feature.isDemo ? (
-                  <span className="ml-2 text-[10px] font-bold text-amber-700 uppercase">
+                  <span className="ml-2 text-[10px] font-semibold text-amber-700 uppercase">
                     DEMO
                   </span>
                 ) : null}

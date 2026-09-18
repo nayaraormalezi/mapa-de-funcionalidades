@@ -4,12 +4,23 @@ import {
   normalizeDeadlineStatus,
   normalizeFeatureStage,
 } from "@/lib/labels";
-import { getProductMeta, isProductId, parseProductId } from "@/lib/products";
+import {
+  buildChannelIntelligence,
+  evaluationChannelKey,
+  groupEvaluationsByChannel,
+} from "@/lib/health";
+import {
+  appliesToProduct,
+  getProductMeta,
+  isProductId,
+  parseProductId,
+} from "@/lib/products";
 import type {
   Channel,
   ChannelContext,
   FeatureMapRow,
   TemporalStatus,
+  UserNeed,
 } from "@/types";
 
 export async function getAudiences() {
@@ -80,6 +91,9 @@ export async function getOfficialChannelMatrix() {
 
 export async function buildFeatureMapRows(): Promise<FeatureMapRow[]> {
   const db = await getDatabase();
+  const evalsByChannel = groupEvaluationsByChannel(
+    db.featureChannelEvaluations,
+  );
 
   return db.featureChannelContexts
     .map((fcc): FeatureMapRow | null => {
@@ -103,26 +117,57 @@ export async function buildFeatureMapRows(): Promise<FeatureMapRow[]> {
       const channel = db.channels.find(
         (c) => c.id === channelContext.channelId,
       );
-      const capability = db.capabilities.find(
-        (c) => c.id === feature.capabilityId,
-      );
-      const userNeed = capability
-        ? db.userNeeds.find((n) => n.id === capability.userNeedId)
-        : undefined;
-      const journey = userNeed
-        ? db.journeys.find((j) => j.id === userNeed.journeyId)
+      if (!audience || !moment || !channel) return null;
+
+      // Hierarquia: Feature → Need / Journey via M2M (fallback Capability).
+      // FCC is source of truth for existence — do not exclude when
+      // feature.productIds omits this product.
+      const linkedNeedIds =
+        feature.needIds.length > 0
+          ? feature.needIds
+          : (db.featureNeeds ?? [])
+              .filter((l) => l.featureId === feature.id)
+              .map((l) => l.userNeedId);
+
+      const linkedNeeds = linkedNeedIds
+        .map((id) => db.userNeeds.find((n) => n.id === id))
+        .filter((n): n is NonNullable<typeof n> => Boolean(n));
+
+      let userNeed: UserNeed | undefined =
+        linkedNeeds.find((n) => appliesToProduct(n.productIds, productId)) ??
+        linkedNeeds[0];
+
+      let capability = feature.capabilityId
+        ? db.capabilities.find((c) => c.id === feature.capabilityId)
         : undefined;
 
-      if (
-        !audience ||
-        !moment ||
-        !channel ||
-        !capability ||
-        !userNeed ||
-        !journey
-      ) {
-        return null;
+      if (!userNeed && capability) {
+        userNeed = db.userNeeds.find((n) => n.id === capability!.userNeedId);
       }
+      if (!capability && userNeed) {
+        capability = db.capabilities.find((c) => c.userNeedId === userNeed!.id);
+      }
+
+      const linkedJourneyIds =
+        feature.journeyIds.length > 0
+          ? feature.journeyIds
+          : (db.featureJourneys ?? [])
+              .filter((l) => l.featureId === feature.id)
+              .map((l) => l.journeyId);
+
+      const journey =
+        linkedJourneyIds
+          .map((id) => db.journeys.find((j) => j.id === id))
+          .find(Boolean) ??
+        (userNeed
+          ? db.journeys.find((j) => j.id === userNeed!.journeyId)
+          : undefined);
+
+      if (!userNeed || !journey) return null;
+
+      const journeyStage = userNeed.journeyStageId
+        ? db.journeyStages.find((s) => s.id === userNeed.journeyStageId)
+        : undefined;
 
       const stage = normalizeFeatureStage(fcc.phase || fcc.status);
       const status =
@@ -131,6 +176,11 @@ export async function buildFeatureMapRows(): Promise<FeatureMapRow[]> {
         fcc.status === "NO_DEADLINE"
           ? normalizeDeadlineStatus(fcc.status)
           : deriveDeadlineStatus(fcc.expectedDate, stage);
+
+      const evalKey = evaluationChannelKey(feature.id, channelContext.id);
+      const channelIntel = buildChannelIntelligence(
+        evalsByChannel.get(evalKey) ?? [],
+      );
 
       return {
         featureId: feature.id,
@@ -153,10 +203,12 @@ export async function buildFeatureMapRows(): Promise<FeatureMapRow[]> {
         momentName: moment.name,
         journeyId: journey.id,
         journeyName: journey.name,
+        journeyStageId: journeyStage?.id ?? userNeed.journeyStageId ?? null,
+        journeyStageName: journeyStage?.name ?? null,
         userNeedId: userNeed.id,
         userNeedName: userNeed.name,
-        capabilityId: capability.id,
-        capabilityName: capability.name,
+        capabilityId: capability?.id ?? "",
+        capabilityName: capability?.name ?? "",
         channelId: channel.id,
         channelName: channel.name,
         channelContextId: channelContext.id,
@@ -164,12 +216,27 @@ export async function buildFeatureMapRows(): Promise<FeatureMapRow[]> {
         featureChannelContextId: fcc.id,
         status,
         experience: fcc.experience,
+        healthScore: channelIntel.healthScore,
+        healthSignal: channelIntel.healthSignal,
         phase: stage,
         startDate: fcc.startDate,
         expectedDate: fcc.expectedDate,
         launchDate: fcc.launchDate,
         responsible: fcc.responsible,
         notes: fcc.notes,
+        figmaUrl: fcc.figmaUrl ?? null,
+        experienceImageUrl: fcc.experienceImageUrl ?? null,
+        experienceUrl: fcc.experienceUrl ?? null,
+        ticketNumber: fcc.ticketNumber?.trim()
+          ? fcc.ticketNumber.trim()
+          : null,
+        evaluationNotes: fcc.evaluationNotes ?? "",
+        researchDate: fcc.researchDate ?? null,
+        researchFilePath: fcc.researchFilePath ?? null,
+        researchFileName: fcc.researchFileName ?? null,
+        researchFileMime: fcc.researchFileMime ?? null,
+        researchFileSize: fcc.researchFileSize ?? null,
+        needsEvolution: Boolean(fcc.needsEvolution),
       };
     })
     .filter((row): row is FeatureMapRow => row !== null);

@@ -8,6 +8,7 @@ import type {
   RoadmapPhase,
   TemporalStatus,
 } from "@/types";
+import { dateInRange, type DateRange } from "@/lib/report-period";
 
 /** Uma implementação = funcionalidade + produto + público + momento + canal. */
 export type RoadmapImpl = {
@@ -65,34 +66,17 @@ export function formatMonthYear(value: string | null | undefined): string {
   return `${capitalized}/${d.getFullYear()}`;
 }
 
-export function periodCutoff(period: string): Date | null {
-  if (!period) return null;
-  const now = new Date();
-  if (period === "30d") {
-    return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-  }
-  if (period === "90d") {
-    return new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-  }
-  if (period === "ytd") {
-    return new Date(now.getFullYear(), 0, 1);
-  }
-  return null;
-}
-
-export function implInPeriod(item: RoadmapImpl, cutoff: Date): boolean {
+/** Inclui item se alguma data cair no intervalo; sem datas → não filtra fora. */
+export function implInPeriod(item: RoadmapImpl, range: DateRange): boolean {
   const candidates = [
     item.expectedDate,
     item.startDate,
     item.launchDate,
     ...item.evolutions.flatMap((e) => [e.expectedDate, e.startDate]),
-  ].filter(Boolean) as string[];
-  if (candidates.length === 0) return true;
-  return candidates.some((raw) => {
-    const date = new Date(raw);
-    if (Number.isNaN(date.getTime())) return true;
-    return date >= cutoff;
-  });
+  ];
+  const present = candidates.filter(Boolean) as string[];
+  if (present.length === 0) return true;
+  return present.some((raw) => dateInRange(raw, range));
 }
 
 export function activeEvolutions(item: RoadmapImpl): FeatureEvolution[] {

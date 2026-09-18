@@ -11,6 +11,10 @@ import {
 import { getDatabase } from "@/services/db";
 import type { FeatureEvolution } from "@/types";
 
+/**
+ * Roadmap = VIEW sobre Implementation (FeatureChannelContext) + FeatureEvolution.
+ * Não usa RoadmapItem como fonte de verdade.
+ */
 export default async function RoadmapPage() {
   const [rows, audiences, moments, channels, db, auth] = await Promise.all([
     buildFeatureMapRows(),

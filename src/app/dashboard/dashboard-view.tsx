@@ -2,12 +2,28 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
 import {
   FilterSelect,
   ProgressBar,
   SurfaceCard,
 } from "@/components/ui/prototype";
-import { DEVELOPMENT_STAGES, FEATURE_STAGE_ORDER, FEATURE_STATUS_ORDER, featureStageLabel, featureStatusLabel, priorityLabel } from "@/lib/labels";
+import { InfoTooltip, TooltipProvider } from "@/components/ui/tooltip";
+import {
+  CONCEPT_LABEL,
+  DEVELOPMENT_STAGES,
+  FEATURE_STAGE_ORDER,
+  FEATURE_STATUS_ORDER,
+  featureStageLabel,
+  featureStatusLabel,
+  priorityLabel,
+} from "@/lib/labels";
+import {
+  allPeriodRange,
+  dateInRange,
+  toISODate,
+  type DateRange,
+} from "@/lib/report-period";
 import { cn, formatPercent } from "@/lib/utils";
 import type {
   CoverageItem,
@@ -23,6 +39,7 @@ import {
   Handshake,
   RefreshCw,
   ShieldAlert,
+  ShieldOff,
   ShoppingCart,
   User,
   Users,
@@ -107,6 +124,31 @@ function uniqueFeatures(rows: FeatureMapRow[]) {
   return new Set(rows.map((r) => r.featureId));
 }
 
+/** Último dia do mês civil anterior (YYYY-MM-DD). */
+function endOfPreviousMonth(now = new Date()): string {
+  return toISODate(new Date(now.getFullYear(), now.getMonth(), 0));
+}
+
+/**
+ * Variação real vs. mês anterior.
+ * Sem baseline (previous <= 0) ou sem dados comparáveis → null (não exibe).
+ */
+function featuresMonthOverMonthTrend(
+  currentCount: number,
+  previousCount: number,
+): { text: string; up: boolean } | null {
+  if (previousCount <= 0) return null;
+  const delta = ((currentCount - previousCount) / previousCount) * 100;
+  if (!Number.isFinite(delta)) return null;
+  const rounded = Math.round(delta);
+  const arrow = rounded > 0 ? "▲" : rounded < 0 ? "▼" : "●";
+  const sign = rounded > 0 ? "+" : "";
+  return {
+    text: `${arrow} ${sign}${rounded}% em relação ao mês anterior`,
+    up: rounded >= 0,
+  };
+}
+
 function bestFeatureStage(stages: FeatureStage[]): FeatureStage {
   if (stages.includes("AVAILABLE")) return "AVAILABLE";
   const inDev = stages.find((s) => DEVELOPMENT_STAGES.includes(s));
@@ -161,31 +203,11 @@ function coverageFor(
   });
 }
 
-function periodCutoff(period: string): Date | null {
-  if (!period) return null;
-  const now = new Date();
-  if (period === "30d") {
-    return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-  }
-  if (period === "90d") {
-    return new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-  }
-  if (period === "ytd") {
-    return new Date(now.getFullYear(), 0, 1);
-  }
-  return null;
-}
-
-function rowInPeriod(row: FeatureMapRow, cutoff: Date): boolean {
-  const candidates = [row.launchDate, row.expectedDate, row.startDate].filter(
-    Boolean,
-  ) as string[];
-  if (candidates.length === 0) return true;
-  return candidates.some((raw) => {
-    const date = new Date(raw);
-    if (Number.isNaN(date.getTime())) return true;
-    return date >= cutoff;
-  });
+function rowInPeriod(row: FeatureMapRow, range: DateRange): boolean {
+  const candidates = [row.launchDate, row.expectedDate, row.startDate];
+  const present = candidates.filter(Boolean) as string[];
+  if (present.length === 0) return true;
+  return present.some((raw) => dateInRange(raw, range));
 }
 
 export function DashboardView({
@@ -195,9 +217,11 @@ export function DashboardView({
   moments,
   products,
   gaps,
+  coverageGaps,
   gapMeta,
   channelTabs,
   updatedAtLabel,
+  featureCreatedAt,
 }: {
   userName: string;
   rows: FeatureMapRow[];
@@ -205,35 +229,27 @@ export function DashboardView({
   moments: Option[];
   products: Option[];
   gaps: Gap[];
+  coverageGaps: { audienceId: string; momentId: string }[];
   gapMeta: Record<
     string,
     { audience: string; moment: string; channel: string }
   >;
   channelTabs: TabData[];
   updatedAtLabel: string;
+  /** createdAt ISO por featureId — base para tendência mês a mês. */
+  featureCreatedAt: Record<string, string>;
 }) {
   const [audienceId, setAudienceId] = useState("");
   const [momentId, setMomentId] = useState("");
   const [product, setProduct] = useState("");
-  const [period, setPeriod] = useState("");
-
-  const periodOptions = useMemo(
-    () => [
-      { value: "", label: "Todos" },
-      { value: "30d", label: "Últimos 30 dias" },
-      { value: "90d", label: "Últimos 90 dias" },
-      { value: "ytd", label: "Ano corrente" },
-    ],
-    [],
-  );
+  const [period, setPeriod] = useState<DateRange>(() => allPeriodRange());
 
   const filteredRows = useMemo(() => {
-    const cutoff = periodCutoff(period);
     return rows.filter((r) => {
       if (audienceId && r.audienceId !== audienceId) return false;
       if (momentId && r.momentId !== momentId) return false;
       if (product && r.productId !== product && r.product !== product) return false;
-      if (cutoff && !rowInPeriod(r, cutoff)) return false;
+      if (!rowInPeriod(r, period)) return false;
       return true;
     });
   }, [rows, audienceId, momentId, product, period]);
@@ -246,6 +262,14 @@ export function DashboardView({
     });
   }, [gaps, audienceId, momentId]);
 
+  const filteredLacunas = useMemo(() => {
+    return coverageGaps.filter((g) => {
+      if (audienceId && g.audienceId !== audienceId) return false;
+      if (momentId && g.momentId !== momentId) return false;
+      return true;
+    });
+  }, [coverageGaps, audienceId, momentId]);
+
   const filteredTabs = useMemo(() => {
     if (!audienceId) return channelTabs;
     return channelTabs.filter((t) => t.id === audienceId);
@@ -253,21 +277,37 @@ export function DashboardView({
 
   const kpis = useMemo(() => {
     const stages = featurePrimaryStages(filteredRows);
-    const total = stages.length || 1;
     const byStage = Object.fromEntries(
       FEATURE_STAGE_ORDER.map((stage) => [
         stage,
         stages.filter((s) => s === stage).length,
       ]),
     ) as Record<FeatureStage, number>;
-    const gapCount = filteredGaps.length;
     return {
       total: stages.length,
       byStage,
-      gaps: gapCount,
-      gapsPct: (gapCount / total) * 100,
+      problemas: filteredGaps.length,
+      lacunas: filteredLacunas.length,
     };
-  }, [filteredRows, filteredGaps]);
+  }, [filteredRows, filteredGaps, filteredLacunas]);
+
+  const featuresTrend = useMemo(() => {
+    const dimRows = rows.filter((r) => {
+      if (audienceId && r.audienceId !== audienceId) return false;
+      if (momentId && r.momentId !== momentId) return false;
+      if (product && r.productId !== product && r.product !== product)
+        return false;
+      return true;
+    });
+    const prevEnd = endOfPreviousMonth();
+    let previous = 0;
+    for (const id of uniqueFeatures(dimRows)) {
+      const created = featureCreatedAt[id];
+      if (!created) continue;
+      if (created.slice(0, 10) <= prevEnd) previous += 1;
+    }
+    return featuresMonthOverMonthTrend(kpis.total, previous);
+  }, [rows, audienceId, momentId, product, featureCreatedAt, kpis.total]);
 
   const byAudience = useMemo(
     () =>
@@ -324,6 +364,7 @@ export function DashboardView({
   );
 
   return (
+    <TooltipProvider>
     <div className="space-y-5">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div className="min-w-0 space-y-1">
@@ -360,12 +401,10 @@ export function DashboardView({
             options={[{ value: "", label: "Todos" }, ...products]}
             className="min-w-[140px]"
           />
-          <FilterSelect
+          <DateRangePicker
             label="Período"
             value={period}
             onChange={setPeriod}
-            options={periodOptions}
-            className="min-w-[140px]"
           />
         </div>
         <p className="pb-2 text-xs text-slate-500">
@@ -373,21 +412,32 @@ export function DashboardView({
         </p>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-3">
         <KpiCard
           icon={FileText}
           value={kpis.total}
           label="Funcionalidades"
-          trend="▲ +12% em relação ao mês anterior"
+          tooltip="Capacidades do produto no catálogo de funcionalidades, no recorte dos filtros atuais."
+          trend={featuresTrend?.text}
+          trendUp={featuresTrend?.up}
           tone="default"
+          href="/mapa"
         />
         <KpiCard
           icon={ShieldAlert}
-          value={kpis.gaps}
-          label="Gaps identificados"
-          hint={`${formatPercent(kpis.gapsPct)} do recorte`}
+          value={kpis.problemas}
+          label="Problemas identificados"
+          tooltip="Fricções, falhas e dificuldades identificadas na experiência."
           tone="danger"
-          bar={kpis.gapsPct}
+          href="/gaps?tab=issues"
+        />
+        <KpiCard
+          icon={ShieldOff}
+          value={kpis.lacunas}
+          label={CONCEPT_LABEL.lacunas}
+          tooltip="Necessidades que ainda não são atendidas ou possuem baixa cobertura nos canais."
+          tone="warning"
+          href="/gaps?tab=gaps"
         />
       </div>
 
@@ -403,7 +453,7 @@ export function DashboardView({
             href="/roadmap"
             className="shrink-0 text-xs font-medium text-[var(--brand)] hover:underline"
           >
-            Ver todos →
+            Mostrar todos →
           </Link>
         </div>
         <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-7">
@@ -521,32 +571,46 @@ export function DashboardView({
 
       <div className="grid gap-4 xl:grid-cols-[1.5fr_1fr]">
         <SurfaceCard className="p-5">
-          <div className="mb-4">
-            <h2 className="text-sm font-semibold text-slate-900">
-              Destaque da transformação de canais
-            </h2>
-            <p className="mt-0.5 text-xs text-slate-500">
-              Evolução para uma experiência mais integrada
-            </p>
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-900">
+                Destaque da transformação de canais
+              </h2>
+              <p className="mt-0.5 text-xs text-slate-500">
+                Evolução para uma experiência mais integrada
+              </p>
+            </div>
+            <Link
+              href="/canais#transformacao"
+              className="shrink-0 text-xs font-medium text-[var(--brand)] hover:underline"
+            >
+              Mostrar todos →
+            </Link>
           </div>
           <DashboardChannelTabs tabs={filteredTabs} />
         </SurfaceCard>
 
         <SurfaceCard className="p-5">
           <div className="mb-3 flex items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold text-slate-900">
-              Principais gaps
-            </h2>
+            <div>
+              <h2 className="text-sm font-semibold text-slate-900">
+                Principais {CONCEPT_LABEL.issues.toLowerCase()}
+              </h2>
+              <p className="mt-0.5 text-xs text-slate-500">
+                Catálogo cadastrado — distinto dos{" "}
+                {CONCEPT_LABEL.coverageGaps.toLowerCase()}
+              </p>
+            </div>
             <Link
-              href="/gaps"
+              href="/gaps?tab=issues"
               className="text-xs font-medium text-[var(--brand)] hover:underline"
             >
-              Ver todos →
+              Mostrar todos →
             </Link>
           </div>
           {filteredGaps.length === 0 ? (
             <p className="text-sm text-slate-500">
-              Nenhum gap aberto no recorte.
+              Nenhuma {CONCEPT_LABEL.issue.toLowerCase()} aberta no recorte.
             </p>
           ) : (
             <ul className="divide-y divide-slate-100">
@@ -595,6 +659,7 @@ export function DashboardView({
         </SurfaceCard>
       </div>
     </div>
+    </TooltipProvider>
   );
 }
 
@@ -636,16 +701,22 @@ function KpiCard({
   label,
   hint,
   trend,
+  trendUp = true,
+  tooltip,
   tone,
   bar,
+  href,
 }: {
   icon?: React.ComponentType<{ className?: string }>;
   value: number;
   label: string;
   hint?: string;
   trend?: string;
+  trendUp?: boolean;
+  tooltip?: string;
   tone: "default" | "success" | "warning" | "info" | "danger";
   bar?: number;
+  href?: string;
 }) {
   const tones = {
     default: {
@@ -675,16 +746,32 @@ function KpiCard({
     },
   }[tone];
 
-  return (
-    <SurfaceCard className="p-4">
-      <div className="flex items-start justify-between gap-2">
+  const card = (
+    <SurfaceCard
+      className={cn(
+        "flex h-full w-full min-w-0 flex-col p-4",
+        href &&
+          "transition-colors hover:border-[var(--brand)]/40 hover:bg-[var(--brand-soft)]/30",
+      )}
+    >
+      <div className="flex flex-1 items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="text-[26px] leading-none font-bold tracking-tight text-slate-900 tabular-nums">
             {value}
           </p>
-          <p className="mt-1.5 text-sm font-medium text-slate-700">{label}</p>
+          <p className="mt-1.5 flex items-center gap-1.5 text-sm font-medium text-slate-700">
+            <span>{label}</span>
+            {tooltip ? <InfoTooltip content={tooltip} /> : null}
+          </p>
           {trend ? (
-            <p className="mt-2 text-xs font-medium text-emerald-600">{trend}</p>
+            <p
+              className={cn(
+                "mt-2 text-xs font-medium",
+                trendUp ? "text-emerald-600" : "text-rose-600",
+              )}
+            >
+              {trend}
+            </p>
           ) : null}
           {hint ? (
             <p className={cn("mt-2 text-xs font-medium", tones.hint)}>{hint}</p>
@@ -708,6 +795,23 @@ function KpiCard({
           </div>
         ) : null}
       </div>
+      {href ? (
+        <span className="mt-auto pt-3 text-xs font-medium text-[var(--brand)]">
+          Mostrar detalhamento →
+        </span>
+      ) : null}
     </SurfaceCard>
+  );
+
+  if (!href) return card;
+
+  return (
+    <Link
+      href={href}
+      className="flex h-full min-w-0 w-full rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)] focus-visible:ring-offset-2"
+      aria-label={`Mostrar detalhamento de ${label}`}
+    >
+      {card}
+    </Link>
   );
 }

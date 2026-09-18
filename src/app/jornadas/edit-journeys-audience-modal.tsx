@@ -32,7 +32,7 @@ export function EditJourneysAudienceModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[80] flex items-end justify-center sm:items-center sm:p-4">
       <button
         type="button"
         className="absolute inset-0 bg-slate-950/45"
@@ -43,16 +43,16 @@ export function EditJourneysAudienceModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="edit-journeys-title"
-        className="relative z-[81] w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl"
+        className="relative z-[81] flex max-h-[min(92dvh,100%)] w-full max-w-xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl"
       >
-        <div className="flex items-start justify-between gap-3 border-b border-[var(--border)] px-6 py-5">
-          <div>
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[var(--border)] px-5 py-4 sm:px-6 sm:py-5">
+          <div className="min-w-0">
             <p className="text-[11px] font-semibold tracking-[0.08em] text-slate-400 uppercase">
               Editar jornadas
             </p>
             <h2
               id="edit-journeys-title"
-              className="mt-1 text-xl font-semibold text-slate-900"
+              className="mt-1 text-lg font-semibold text-slate-900 sm:text-xl"
             >
               De qual público é esta jornada?
             </h2>
@@ -64,14 +64,14 @@ export function EditJourneysAudienceModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+            className="shrink-0 rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
             aria-label="Fechar"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        <div className="space-y-2 p-6">
+        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain p-4 sm:p-6">
           {audiences.map((audience) => {
             const Icon = AUDIENCE_ICONS[audience.code] ?? Users;
             return (

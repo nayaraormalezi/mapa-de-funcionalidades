@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { AudienceBadge } from "@/components/badges/audience-badge";
 import { ChannelBadge } from "@/components/badges/channel-badge";
-import { ExperienceBadge } from "@/components/badges/experience-badge";
+import { HealthBadge } from "@/components/badges/health-badge";
 import { MomentBadge } from "@/components/badges/moment-badge";
 import { PriorityBadge } from "@/components/badges/priority-badge";
 import { StatusBadge } from "@/components/badges/status-badge";
@@ -38,13 +38,13 @@ export function FeatureRow({ row }: { row: FeatureMapRow }) {
         />
       </td>
       <td className="px-3 py-3">
-        <StatusBadge status={row.status} />
-      </td>
-      <td className="px-3 py-3">
-        <ExperienceBadge experience={row.experience} />
+        <HealthBadge score={row.healthScore} signal={row.healthSignal} />
       </td>
       <td className="px-3 py-3">
         <PriorityBadge priority={row.priority} />
+      </td>
+      <td className="px-3 py-3">
+        <StatusBadge status={row.status} />
       </td>
     </tr>
   );

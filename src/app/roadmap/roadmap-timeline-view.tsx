@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useMemo, useRef } from "react";
 import { SurfaceCard } from "@/components/ui/prototype";
 import {
   evolutionPhaseLabel,
@@ -28,15 +29,91 @@ const STAGE_BAR: Record<FeatureStage, string> = {
 
 const COL = 92;
 const LABEL = 300;
+/** Meses futuros além do mês atual (para scroll à frente). */
+const FUTURE_BUFFER = 6;
 
 function monthKey(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
-function buildMonths() {
+function quarterOf(d: Date) {
+  return Math.floor(d.getMonth() / 3) + 1;
+}
+
+function quarterKey(d: Date) {
+  return `${d.getFullYear()}-Q${quarterOf(d)}`;
+}
+
+/** Agrupa meses consecutivos em blocos de quarter/ano para o cabeçalho. */
+function buildQuarterGroups(months: { key: string; date: Date }[]) {
+  const groups: {
+    key: string;
+    label: string;
+    year: number;
+    quarter: number;
+    span: number;
+  }[] = [];
+
+  for (const m of months) {
+    const key = quarterKey(m.date);
+    const last = groups[groups.length - 1];
+    if (last && last.key === key) {
+      last.span += 1;
+      continue;
+    }
+    const q = quarterOf(m.date);
+    groups.push({
+      key,
+      year: m.date.getFullYear(),
+      quarter: q,
+      label: `Q${q} ${m.date.getFullYear()}`,
+      span: 1,
+    });
+  }
+
+  return groups;
+}
+
+function buildMonths(items: RoadmapImpl[]) {
   const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth() - 2, 1);
-  return Array.from({ length: 8 }, (_, i) => {
+  const currentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  let start = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+
+  // Inclui lançamentos antigos no scroll à esquerda (disponíveis).
+  for (const item of items) {
+    if (item.phase !== "AVAILABLE" || !item.launchDate) continue;
+    const launch = new Date(item.launchDate);
+    if (Number.isNaN(launch.getTime())) continue;
+    const launchMonth = new Date(launch.getFullYear(), launch.getMonth(), 1);
+    if (launchMonth < start) start = launchMonth;
+  }
+
+  // Também olha datas de início/previsão de itens em andamento.
+  for (const item of items) {
+    for (const raw of [item.startDate, item.expectedDate]) {
+      if (!raw) continue;
+      const d = new Date(raw);
+      if (Number.isNaN(d.getTime())) continue;
+      const m = new Date(d.getFullYear(), d.getMonth(), 1);
+      if (m < start) start = m;
+    }
+  }
+
+  const earliestAllowed = new Date(now.getFullYear(), now.getMonth() - 35, 1);
+  if (start < earliestAllowed) start = earliestAllowed;
+
+  const endMonth = new Date(
+    currentMonth.getFullYear(),
+    currentMonth.getMonth() + FUTURE_BUFFER,
+    1,
+  );
+  const length =
+    (endMonth.getFullYear() - start.getFullYear()) * 12 +
+    (endMonth.getMonth() - start.getMonth()) +
+    1;
+
+  return Array.from({ length: Math.max(length, 8) }, (_, i) => {
     const d = new Date(start.getFullYear(), start.getMonth() + i, 1);
     const label = d
       .toLocaleDateString("pt-BR", { month: "short" })
@@ -56,15 +133,15 @@ function barFromDates(
   const first = months[0].date;
   const last = months[months.length - 1].date;
 
-  const parse = (raw: string | null) => {
+  const parseMonth = (raw: string | null) => {
     if (!raw) return null;
     const d = new Date(raw);
     if (Number.isNaN(d.getTime())) return null;
     return new Date(d.getFullYear(), d.getMonth(), 1);
   };
 
-  let start = parse(startRaw);
-  let end = parse(endRaw);
+  let start = parseMonth(startRaw);
+  let end = parseMonth(endRaw);
 
   if (!start && !end) {
     if (fallbackFull) {
@@ -103,40 +180,115 @@ export function RoadmapTimelineView({
   onOpenFeature: (featureId: string) => void;
   onOpenEvolution: (item: RoadmapImpl, evo: FeatureEvolution) => void;
 }) {
+  const scrollerRef = useRef<HTMLDivElement>(null);
   const groups = groupByFeatureThenProduct(items);
-  const months = buildMonths();
+  const months = useMemo(() => buildMonths(items), [items]);
+  const quarterGroups = useMemo(() => buildQuarterGroups(months), [months]);
   const trackWidth = months.length * COL;
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const currentMonthKey = monthKey(
+    new Date(now.getFullYear(), now.getMonth(), 1),
+  );
+  const currentMonthIndex = months.findIndex((m) => m.key === currentMonthKey);
+
+  // Abre a timeline já posicionada no mês atual.
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el || currentMonthIndex < 0) return;
+    const frame = window.requestAnimationFrame(() => {
+      el.scrollLeft = currentMonthIndex * COL;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [currentMonthIndex, items]);
 
   if (groups.length === 0) {
     return (
       <SurfaceCard className="p-6 text-sm text-[var(--muted-foreground)]">
-        Nenhum item de roadmap com os filtros atuais.
+        Nenhum item com os filtros atuais.
       </SurfaceCard>
     );
   }
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-[var(--border)] bg-white">
+    <div
+      ref={scrollerRef}
+      className="overflow-x-auto rounded-xl border border-[var(--border)] bg-white"
+    >
       <div
-        className="flex border-b border-[var(--border)] bg-slate-50"
+        className="sticky top-0 z-40 border-b border-[var(--border)] bg-slate-50"
         style={{ minWidth: LABEL + trackWidth }}
       >
-        <div
-          className="sticky left-0 z-30 shrink-0 border-r border-[var(--border)] bg-slate-50 px-4 py-2.5 text-[11px] font-semibold tracking-wide text-slate-500 uppercase"
-          style={{ width: LABEL }}
-        >
-          Funcionalidade / Produto / Canal
+        {/* Linha 1: ano + quarter */}
+        <div className="flex border-b border-slate-200/80">
+          <div
+            className="sticky left-0 z-30 shrink-0 border-r border-[var(--border)] bg-slate-50 px-4 py-1.5"
+            style={{ width: LABEL }}
+          />
+          <div className="flex" style={{ width: trackWidth }}>
+            {quarterGroups.map((q, idx) => (
+              <div
+                key={q.key}
+                className={cn(
+                  "flex items-center justify-center border-l border-slate-200 bg-slate-100/80 py-1.5 text-center",
+                  idx % 2 === 1 && "bg-slate-50",
+                )}
+                style={{ width: q.span * COL }}
+              >
+                <span className="text-[11px] font-semibold tracking-wide text-slate-700">
+                  {q.label}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
-        <div className="flex" style={{ width: trackWidth }}>
-          {months.map((m) => (
-            <div
-              key={m.key}
-              className="border-l border-slate-100 py-2.5 text-center text-[11px] font-semibold text-slate-500"
-              style={{ width: COL }}
-            >
-              {m.label}
-            </div>
-          ))}
+
+        {/* Linha 2: meses */}
+        <div className="flex">
+          <div
+            className="sticky left-0 z-30 shrink-0 border-r border-[var(--border)] bg-slate-50 px-4 py-2 text-[11px] font-semibold tracking-wide text-slate-500 uppercase"
+            style={{ width: LABEL }}
+          >
+            Funcionalidade / Produto / Canal
+          </div>
+          <div className="flex" style={{ width: trackWidth }}>
+            {months.map((m) => {
+              const q = quarterOf(m.date);
+              const isCurrent = m.key === currentMonthKey;
+              return (
+                <div
+                  key={m.key}
+                  className={cn(
+                    "border-l border-slate-100 py-2 text-center",
+                    isCurrent
+                      ? "bg-[var(--brand-soft)]"
+                      : q % 2 === 0
+                        ? "bg-white/40"
+                        : "bg-transparent",
+                  )}
+                  style={{ width: COL }}
+                  title={`${m.label} ${m.date.getFullYear()} · Q${q}${isCurrent ? " · mês atual" : ""}`}
+                >
+                  <p
+                    className={cn(
+                      "text-[11px] font-semibold",
+                      isCurrent ? "text-[var(--brand)]" : "text-slate-600",
+                    )}
+                  >
+                    {m.label}
+                  </p>
+                  <p
+                    className={cn(
+                      "text-[9px] font-medium",
+                      isCurrent ? "text-[var(--brand)]/80" : "text-slate-400",
+                    )}
+                  >
+                    {String(m.date.getFullYear()).slice(2)}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
 
@@ -185,15 +337,21 @@ export function RoadmapTimelineView({
               </div>
 
               {product.items.map((item) => {
+                const isAvailable = item.phase === "AVAILABLE";
                 const implBar = barFromDates(
-                  item.startDate ?? item.launchDate,
-                  item.phase === "AVAILABLE"
-                    ? new Date().toISOString()
+                  isAvailable
+                    ? item.launchDate
+                    : (item.startDate ?? item.expectedDate),
+                  isAvailable
+                    ? todayIso
                     : item.expectedDate,
                   months,
-                  item.phase === "AVAILABLE",
+                  isAvailable && !item.launchDate,
                 );
                 const active = activeEvolutions(item);
+                const barTitle = isAvailable
+                  ? `${featureStageLabel[item.phase]} · ${formatMonthYear(item.launchDate)} → hoje`
+                  : `${featureStageLabel[item.phase]} · ${formatMonthYear(item.startDate)} → ${formatMonthYear(item.expectedDate)}`;
 
                 return (
                   <div key={item.id}>
@@ -203,7 +361,7 @@ export function RoadmapTimelineView({
                       bar={implBar}
                       barClass={STAGE_BAR[item.phase]}
                       barText={featureStageLabel[item.phase]}
-                      barTitle={`${featureStageLabel[item.phase]} · ${formatMonthYear(item.startDate)} → ${formatMonthYear(item.expectedDate)}`}
+                      barTitle={barTitle}
                       months={months}
                       trackWidth={trackWidth}
                       onClick={() => onOpenFeature(item.featureId)}

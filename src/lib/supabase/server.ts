@@ -1,16 +1,11 @@
+import { getDataMode } from "@/lib/data-mode";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
+/** true quando DataMode === LIVE (env explícito + credenciais). */
 export function isSupabaseEnabled() {
-  return (
-    process.env.NEXT_PUBLIC_USE_SUPABASE === "true" &&
-    Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL) &&
-    Boolean(
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
-        process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
-    )
-  );
+  return getDataMode() === "LIVE";
 }
 
 function getSupabaseUrl() {

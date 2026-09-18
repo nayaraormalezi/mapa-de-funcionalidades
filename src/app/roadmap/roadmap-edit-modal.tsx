@@ -3,24 +3,31 @@
 import { useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { upsertRoadmapItem } from "@/app/actions/crud";
+import { upsertFeatureChannelContext } from "@/app/actions/crud";
 import { Button } from "@/components/ui/button";
 import { featureStatusOptions } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 import type { RoadmapPhase } from "@/types";
 import { X } from "lucide-react";
 
+/**
+ * Edita a Implementation (FeatureChannelContext), não RoadmapItem.
+ * Usado quando o item do Roadmap é uma implementação (id = fcc id).
+ */
 export type RoadmapEditable = {
   id: string;
   featureId: string;
   featureName: string;
+  productId: string;
+  channelContextId: string;
   phase: RoadmapPhase;
   startDate: string | null;
   expectedDate: string | null;
-  actualDate: string | null;
+  launchDate: string | null;
   responsible: string;
   notes: string;
-  channelContextId: string | null;
+  experience?: string;
+  status?: string;
 };
 
 function toInputDate(value: string | null) {
@@ -44,8 +51,18 @@ export function RoadmapEditModal({
   const phaseOptions = featureStatusOptions();
 
   function handleSubmit(formData: FormData) {
+    formData.set("id", item.id);
+    formData.set("feature_id", item.featureId);
+    formData.set("channel_context_id", item.channelContextId);
+    formData.set("product_id", item.productId);
+    if (item.experience) formData.set("experience", item.experience);
+    if (item.status) formData.set("status", item.status);
+    if (item.launchDate) {
+      formData.set("launch_date", item.launchDate.slice(0, 10));
+    }
+
     startTransition(async () => {
-      const result = await upsertRoadmapItem(formData);
+      const result = await upsertFeatureChannelContext(formData);
       if (result.ok) {
         router.refresh();
         onClose();
@@ -72,7 +89,7 @@ export function RoadmapEditModal({
         <div className="flex items-start justify-between gap-3 border-b border-[var(--border)] px-5 py-4">
           <div className="min-w-0">
             <p className="text-[11px] font-semibold tracking-[0.08em] text-slate-400 uppercase">
-              Roadmap
+              Implementação
             </p>
             <h2
               id="roadmap-edit-title"
@@ -84,7 +101,7 @@ export function RoadmapEditModal({
               href={`/funcionalidades/${item.featureId}`}
               className="mt-1 inline-block text-xs font-medium text-[var(--brand)] hover:underline"
             >
-              Ver funcionalidade →
+              Mostrar funcionalidade →
             </Link>
           </div>
           <button
@@ -98,21 +115,8 @@ export function RoadmapEditModal({
         </div>
 
         <form action={handleSubmit} className="space-y-3 p-5">
-          <input type="hidden" name="id" value={item.id} />
-          <input type="hidden" name="feature_id" value={item.featureId} />
-          {item.channelContextId ? (
-            <input
-              type="hidden"
-              name="channel_context_id"
-              value={item.channelContextId}
-            />
-          ) : null}
-          {item.actualDate ? (
-            <input type="hidden" name="actual_date" value={item.actualDate} />
-          ) : null}
-
           <label className="block space-y-1 text-xs font-medium text-slate-600">
-            Status
+            Fase
             <select
               name="phase"
               defaultValue={item.phase}

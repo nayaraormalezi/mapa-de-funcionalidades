@@ -16,7 +16,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { PageBreadcrumb } from "@/components/ui/prototype";
 import { temporalStatusLabel } from "@/lib/labels";
+import { MeasurementAndEvidenceFields } from "@/components/shared/measurement-and-evidence-fields";
+import { ProductMultiSelect } from "@/components/shared/product-multi-select";
+import { AudienceMultiSelect } from "@/components/shared/audience-multi-select";
+import { formatAudienceApplicabilityLabel } from "@/lib/audiences";
+import { formatApplicabilityLabel } from "@/lib/products";
 import { getAuthState } from "@/lib/auth";
 import { getDatabase } from "@/services/db";
 
@@ -36,10 +42,14 @@ function Header({
   return (
     <div className="space-y-3">
       <BackButton href={backHref} />
-      <div>
-        <p className="text-xs font-semibold tracking-[0.14em] text-[var(--brand)] uppercase">
-          Cadastros
-        </p>
+      <div className="space-y-1">
+        <PageBreadcrumb
+          items={[
+            { label: "Configurações", href: "/configuracoes" },
+            { label: "Cadastros", href: "/configuracoes?tab=cadastros" },
+            { label: title },
+          ]}
+        />
         <h1 className="font-[family-name:var(--font-display)] text-2xl font-semibold">
           {title}
         </h1>
@@ -190,11 +200,28 @@ export async function NecessidadesPage({
                 ]}
               />
             </div>
+            <AudienceMultiSelect
+              required
+              options={db.audiences
+                .filter((a) => a.active)
+                .map((a) => ({ id: a.id, name: a.name }))}
+              defaultSelected={editing?.audienceIds}
+              hint="Selecione os públicos aos quais esta necessidade se aplica."
+            />
+            <ProductMultiSelect
+              required
+              defaultSelected={editing?.productIds}
+              hint="Selecione os produtos aos quais esta necessidade se aplica."
+            />
             <Field
               label="Descrição"
               name="description"
               as="textarea"
               defaultValue={editing?.description}
+            />
+            <MeasurementAndEvidenceFields
+              measurementDefault={editing?.measurement}
+              measurementHint="Como saberemos se essa necessidade foi atendida para o cliente."
             />
           </CrudForm>
         </CardContent>
@@ -204,7 +231,16 @@ export async function NecessidadesPage({
         items={items.map((i) => ({
           id: i.id,
           title: i.name,
-          subtitle: db.journeys.find((j) => j.id === i.journeyId)?.name ?? "",
+          subtitle: [
+            formatAudienceApplicabilityLabel(
+              i.audienceIds,
+              db.audiences.map((a) => ({ id: a.id, name: a.name })),
+            ),
+            formatApplicabilityLabel(i.productIds),
+            db.journeys.find((j) => j.id === i.journeyId)?.name ?? "",
+          ]
+            .filter(Boolean)
+            .join(" · "),
           editHref: `/cadastros/necessidades?edit=${i.id}${
             from ? `&from=${encodeURIComponent(from)}` : ""
           }`,

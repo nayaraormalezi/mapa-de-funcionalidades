@@ -1,10 +1,20 @@
 import type { DemoDatabase } from "@/types";
 import {
+  normalizeEvolutionOrigin,
+  reconcileEvolutionStatusPhase,
+} from "@/lib/evolution";
+import { normalizeEvidenceOwnerFields } from "@/lib/evidence";
+import {
   deriveDeadlineStatus,
   normalizeDeadlineStatus,
   normalizeFeatureStage,
 } from "@/lib/labels";
-import { catalogAsProducts, isProductId, resolveProductId } from "@/lib/products";
+import {
+  catalogAsProducts,
+  isProductId,
+  normalizeProductIds,
+  resolveProductId,
+} from "@/lib/products";
 
 /** Snake_case DB row shapes (Supabase). */
 export type AudienceRow = {
@@ -42,6 +52,8 @@ export type JourneyAudienceStageRow = {
   id: string;
   audience_id: string;
   journey_id: string;
+  /** Fase 15 — etapa canônica. Ausente em bases legadas. */
+  journey_stage_id?: string | null;
   display_name: string;
   sort_order: number;
   moment_id: string;
@@ -50,11 +62,27 @@ export type JourneyAudienceStageRow = {
   updated_at: string;
 };
 
-export type UserNeedRow = {
+export type JourneyStageRow = {
   id: string;
   journey_id: string;
   name: string;
   description: string;
+  sort_order: number;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type UserNeedRow = {
+  id: string;
+  journey_id: string;
+  journey_stage_id?: string | null;
+  product_id?: string | null;
+  product_ids?: string[] | null;
+  audience_ids?: string[] | null;
+  name: string;
+  description: string;
+  measurement?: string | null;
   priority: string;
   active: boolean;
   created_at: string;
@@ -73,10 +101,11 @@ export type CapabilityRow = {
 
 export type FeatureRow = {
   id: string;
-  capability_id: string;
+  capability_id: string | null;
   name: string;
   description: string;
   product: string;
+  product_ids?: string[] | null;
   priority: string;
   owner: string;
   ux_owner: string;
@@ -86,6 +115,16 @@ export type FeatureRow = {
   is_demo: boolean;
   created_at: string;
   updated_at: string;
+};
+
+export type FeatureNeedRow = {
+  feature_id: string;
+  user_need_id: string;
+};
+
+export type FeatureJourneyRow = {
+  feature_id: string;
+  journey_id: string;
 };
 
 export type ChannelRow = {
@@ -134,13 +173,31 @@ export type FeatureChannelContextRow = {
   launch_date: string | null;
   responsible: string;
   notes: string;
+  figma_url?: string | null;
+  experience_image_url?: string | null;
+  experience_url?: string | null;
+  /** Ticket/chamado de TI desta implementação (Fase 15.7). */
+  ticket_number?: string | null;
+  evaluation_notes?: string | null;
+  research_date?: string | null;
+  research_file_path?: string | null;
+  research_file_name?: string | null;
+  research_file_mime?: string | null;
+  research_file_size?: number | null;
+  needs_evolution?: boolean | null;
   active: boolean;
   updated_at: string;
 };
 
 export type EvidenceRow = {
   id: string;
-  feature_id: string;
+  feature_id: string | null;
+  user_need_id?: string | null;
+  feature_evolution_id?: string | null;
+  /** Fase 7 — vínculo canônico com FeatureChannelEvaluation (nullable até migration). */
+  evaluation_id?: string | null;
+  owner_type?: string | null;
+  owner_id?: string | null;
   title: string;
   type: string;
   description: string;
@@ -165,6 +222,7 @@ export type RoadmapPhaseRow = {
   updated_at: string;
 };
 
+/** @deprecated Fase 6 — row legada de `roadmap_items`; /roadmap não depende dela. */
 export type RoadmapItemRow = {
   id: string;
   feature_id: string;
@@ -208,12 +266,45 @@ export type FeatureEvolutionRow = {
   description: string;
   phase: string;
   status: string;
+  origin?: string | null;
   priority: string;
   start_date: string | null;
   expected_date: string | null;
   completed_date: string | null;
   responsible: string;
   notes: string;
+  measurement?: string | null;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type FeatureChannelEvaluationRow = {
+  id: string;
+  feature_id: string;
+  channel_context_id: string;
+  feature_channel_context_id: string | null;
+  area: string;
+  study_type: string;
+  method_code: string;
+  method_custom_name?: string | null;
+  name: string;
+  objective?: string | null;
+  status: string;
+  evaluated_at: string | null;
+  responsible?: string | null;
+  audience_segment?: string | null;
+  results?: Record<string, unknown> | null;
+  findings?: string | null;
+  notes?: string | null;
+  research_url?: string | null;
+  report_url?: string | null;
+  figma_url?: string | null;
+  evidence_file_path?: string | null;
+  evidence_file_name?: string | null;
+  evidence_file_mime?: string | null;
+  evidence_file_size?: number | null;
+  needs_evolution?: boolean | null;
   active: boolean;
   created_at: string;
   updated_at: string;
@@ -225,10 +316,13 @@ export function mapDatabase(rows: {
   moments: MomentRow[];
   journeys: JourneyRow[];
   journeyMoments: JourneyMomentRow[];
+  journeyStages?: JourneyStageRow[];
   journeyAudienceStages?: JourneyAudienceStageRow[];
   userNeeds: UserNeedRow[];
   capabilities: CapabilityRow[];
   features: FeatureRow[];
+  featureNeeds?: FeatureNeedRow[];
+  featureJourneys?: FeatureJourneyRow[];
   channels: ChannelRow[];
   channelContexts: ChannelContextRow[];
   featureChannelContexts: FeatureChannelContextRow[];
@@ -236,6 +330,7 @@ export function mapDatabase(rows: {
   roadmapPhases?: RoadmapPhaseRow[];
   roadmapItems: RoadmapItemRow[];
   featureEvolutions?: FeatureEvolutionRow[];
+  featureChannelEvaluations?: FeatureChannelEvaluationRow[];
   gaps: GapRow[];
 }): DemoDatabase {
   const momentIdsByJourney = new Map<string, string[]>();
@@ -243,6 +338,54 @@ export function mapDatabase(rows: {
     const list = momentIdsByJourney.get(jm.journey_id) ?? [];
     list.push(jm.moment_id);
     momentIdsByJourney.set(jm.journey_id, list);
+  }
+
+  const capabilityById = new Map(
+    rows.capabilities.map((c) => [c.id, c] as const),
+  );
+  const needById = new Map(rows.userNeeds.map((n) => [n.id, n] as const));
+
+  let featureNeedRows = rows.featureNeeds ?? [];
+  let featureJourneyRows = rows.featureJourneys ?? [];
+
+  if (featureNeedRows.length === 0) {
+    featureNeedRows = rows.features
+      .map((f) => {
+        const cap = f.capability_id
+          ? capabilityById.get(f.capability_id)
+          : undefined;
+        if (!cap) return null;
+        return { feature_id: f.id, user_need_id: cap.user_need_id };
+      })
+      .filter((x): x is FeatureNeedRow => Boolean(x));
+  }
+  if (featureJourneyRows.length === 0) {
+    const seen = new Set<string>();
+    featureJourneyRows = [];
+    for (const link of featureNeedRows) {
+      const need = needById.get(link.user_need_id);
+      if (!need?.journey_id) continue;
+      const key = `${link.feature_id}:${need.journey_id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      featureJourneyRows.push({
+        feature_id: link.feature_id,
+        journey_id: need.journey_id,
+      });
+    }
+  }
+
+  const needIdsByFeature = new Map<string, string[]>();
+  for (const link of featureNeedRows) {
+    const list = needIdsByFeature.get(link.feature_id) ?? [];
+    if (!list.includes(link.user_need_id)) list.push(link.user_need_id);
+    needIdsByFeature.set(link.feature_id, list);
+  }
+  const journeyIdsByFeature = new Map<string, string[]>();
+  for (const link of featureJourneyRows) {
+    const list = journeyIdsByFeature.get(link.feature_id) ?? [];
+    if (!list.includes(link.journey_id)) list.push(link.journey_id);
+    journeyIdsByFeature.set(link.feature_id, list);
   }
 
   return {
@@ -287,10 +430,21 @@ export function mapDatabase(rows: {
       createdAt: j.created_at,
       updatedAt: j.updated_at,
     })),
+    journeyStages: (rows.journeyStages ?? []).map((s) => ({
+      id: s.id,
+      journeyId: s.journey_id,
+      name: s.name,
+      description: s.description,
+      order: s.sort_order,
+      active: s.active,
+      createdAt: s.created_at,
+      updatedAt: s.updated_at,
+    })),
     journeyAudienceStages: (rows.journeyAudienceStages ?? []).map((s) => ({
       id: s.id,
       audienceId: s.audience_id,
       journeyId: s.journey_id,
+      journeyStageId: s.journey_stage_id ?? null,
       displayName: s.display_name,
       sortOrder: s.sort_order,
       momentId: s.moment_id,
@@ -298,16 +452,29 @@ export function mapDatabase(rows: {
       createdAt: s.created_at,
       updatedAt: s.updated_at,
     })),
-    userNeeds: rows.userNeeds.map((n) => ({
-      id: n.id,
-      journeyId: n.journey_id,
-      name: n.name,
-      description: n.description,
-      priority: n.priority as DemoDatabase["userNeeds"][number]["priority"],
-      active: n.active,
-      createdAt: n.created_at,
-      updatedAt: n.updated_at,
-    })),
+    userNeeds: rows.userNeeds.map((n) => {
+      const productIds = normalizeProductIds(n.product_ids, n.product_id);
+      const audienceIds = Array.from(
+        new Set(
+          (n.audience_ids ?? []).map((id) => String(id).trim()).filter(Boolean),
+        ),
+      );
+      return {
+        id: n.id,
+        journeyId: n.journey_id,
+        journeyStageId: n.journey_stage_id ?? null,
+        productId: productIds[0] ?? resolveProductId(n.product_id),
+        productIds,
+        audienceIds,
+        name: n.name,
+        description: n.description,
+        measurement: n.measurement ?? "",
+        priority: n.priority as DemoDatabase["userNeeds"][number]["priority"],
+        active: n.active,
+        createdAt: n.created_at,
+        updatedAt: n.updated_at,
+      };
+    }),
     capabilities: rows.capabilities.map((c) => ({
       id: c.id,
       userNeedId: c.user_need_id,
@@ -322,6 +489,9 @@ export function mapDatabase(rows: {
       name: f.name,
       description: f.description,
       product: f.product,
+      productIds: normalizeProductIds(f.product_ids),
+      needIds: needIdsByFeature.get(f.id) ?? [],
+      journeyIds: journeyIdsByFeature.get(f.id) ?? [],
       priority: f.priority as DemoDatabase["features"][number]["priority"],
       owner: f.owner,
       uxOwner: f.ux_owner,
@@ -331,6 +501,14 @@ export function mapDatabase(rows: {
       isDemo: f.is_demo,
       createdAt: f.created_at,
       updatedAt: f.updated_at,
+    })),
+    featureNeeds: featureNeedRows.map((l) => ({
+      featureId: l.feature_id,
+      userNeedId: l.user_need_id,
+    })),
+    featureJourneys: featureJourneyRows.map((l) => ({
+      featureId: l.feature_id,
+      journeyId: l.journey_id,
     })),
     channels: rows.channels.map((c) => ({
       id: c.id,
@@ -375,23 +553,47 @@ export function mapDatabase(rows: {
         launchDate: f.launch_date,
         responsible: f.responsible,
         notes: f.notes,
+        figmaUrl: f.figma_url ?? null,
+        experienceImageUrl: f.experience_image_url ?? null,
+        experienceUrl: f.experience_url ?? null,
+        ticketNumber: f.ticket_number?.trim() ? f.ticket_number.trim() : null,
+        evaluationNotes: f.evaluation_notes ?? "",
+        researchDate: f.research_date ?? null,
+        researchFilePath: f.research_file_path ?? null,
+        researchFileName: f.research_file_name ?? null,
+        researchFileMime: f.research_file_mime ?? null,
+        researchFileSize: f.research_file_size ?? null,
+        needsEvolution: Boolean(f.needs_evolution),
         updatedAt: f.updated_at,
       };
     }),
-    evidences: rows.evidences.map((e) => ({
-      id: e.id,
-      featureId: e.feature_id,
-      title: e.title,
-      type: e.type as DemoDatabase["evidences"][number]["type"],
-      description: e.description,
-      link: e.link,
-      date: e.evidence_date,
-      responsible: e.responsible,
-      filePath: e.file_path ?? null,
-      fileName: e.file_name ?? null,
-      fileMime: e.file_mime ?? null,
-      fileSize: e.file_size ?? null,
-    })),
+    evidences: rows.evidences.map((e) => {
+      const normalized = normalizeEvidenceOwnerFields({
+        ownerType: e.owner_type,
+        ownerId: e.owner_id,
+        evaluationId: e.evaluation_id,
+        featureId: e.feature_id,
+      });
+      return {
+        id: e.id,
+        ownerType: normalized.ownerType,
+        ownerId: normalized.ownerId,
+        evaluationId: normalized.evaluationId,
+        featureId: normalized.featureId,
+        userNeedId: e.user_need_id ?? null,
+        featureEvolutionId: e.feature_evolution_id ?? null,
+        title: e.title,
+        type: e.type as DemoDatabase["evidences"][number]["type"],
+        description: e.description,
+        link: e.link,
+        date: e.evidence_date,
+        responsible: e.responsible,
+        filePath: e.file_path ?? null,
+        fileName: e.file_name ?? null,
+        fileMime: e.file_mime ?? null,
+        fileSize: e.file_size ?? null,
+      };
+    }),
     roadmapPhases: (rows.roadmapPhases ?? []).map((p) => ({
       id: p.id,
       code: p.code,
@@ -413,25 +615,56 @@ export function mapDatabase(rows: {
       responsible: r.responsible,
       notes: r.notes,
     })),
-    featureEvolutions: (rows.featureEvolutions ?? []).map((e) => ({
+    featureEvolutions: (rows.featureEvolutions ?? []).map((e) => {
+      const aligned = reconcileEvolutionStatusPhase(e.status, e.phase);
+      return {
+        id: e.id,
+        featureChannelContextId: e.feature_channel_context_id,
+        title: e.title,
+        description: e.description ?? "",
+        phase: aligned.phase,
+        status: aligned.status,
+        origin: normalizeEvolutionOrigin(e.origin),
+        priority: e.priority as DemoDatabase["featureEvolutions"][number]["priority"],
+        startDate: e.start_date,
+        expectedDate: e.expected_date,
+        completedDate: e.completed_date,
+        responsible: e.responsible ?? "",
+        notes: e.notes ?? "",
+        measurement: e.measurement ?? "",
+        active: e.active !== false,
+        createdAt: e.created_at,
+        updatedAt: e.updated_at,
+      };
+    }),
+    featureChannelEvaluations: (rows.featureChannelEvaluations ?? []).map((e) => ({
       id: e.id,
+      featureId: e.feature_id,
+      channelContextId: e.channel_context_id,
       featureChannelContextId: e.feature_channel_context_id,
-      title: e.title,
-      description: e.description ?? "",
-      phase: (["BACKLOG", "UX_UI", "DEVELOPMENT", "HOMOLOGATION", "DONE"].includes(
-        e.phase,
-      )
-        ? e.phase
-        : "BACKLOG") as DemoDatabase["featureEvolutions"][number]["phase"],
-      status: (["IN_PROGRESS", "DONE", "CANCELLED", "PAUSED"].includes(e.status)
-        ? e.status
-        : "IN_PROGRESS") as DemoDatabase["featureEvolutions"][number]["status"],
-      priority: e.priority as DemoDatabase["featureEvolutions"][number]["priority"],
-      startDate: e.start_date,
-      expectedDate: e.expected_date,
-      completedDate: e.completed_date,
+      area: e.area as DemoDatabase["featureChannelEvaluations"][number]["area"],
+      studyType:
+        e.study_type as DemoDatabase["featureChannelEvaluations"][number]["studyType"],
+      methodCode: e.method_code,
+      methodCustomName: e.method_custom_name ?? "",
+      name: e.name ?? "",
+      objective: e.objective ?? "",
+      status:
+        e.status as DemoDatabase["featureChannelEvaluations"][number]["status"],
+      evaluatedAt: e.evaluated_at,
       responsible: e.responsible ?? "",
+      audienceSegment: e.audience_segment ?? "",
+      results: (e.results ?? {}) as Record<string, unknown>,
+      findings: e.findings ?? "",
       notes: e.notes ?? "",
+      researchUrl: e.research_url ?? null,
+      reportUrl: e.report_url ?? null,
+      figmaUrl: e.figma_url ?? null,
+      evidenceFilePath: e.evidence_file_path ?? null,
+      evidenceFileName: e.evidence_file_name ?? null,
+      evidenceFileMime: e.evidence_file_mime ?? null,
+      evidenceFileSize: e.evidence_file_size ?? null,
+      needsEvolution: Boolean(e.needs_evolution),
       active: e.active !== false,
       createdAt: e.created_at,
       updatedAt: e.updated_at,

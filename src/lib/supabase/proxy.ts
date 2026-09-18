@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { getDataMode } from "@/lib/data-mode";
 
 function getSupabaseKey() {
   return (
@@ -8,18 +9,10 @@ function getSupabaseKey() {
   );
 }
 
-function isSupabaseConfigured() {
-  return (
-    process.env.NEXT_PUBLIC_USE_SUPABASE === "true" &&
-    Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL) &&
-    Boolean(getSupabaseKey())
-  );
-}
-
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
-  if (!isSupabaseConfigured()) {
+  if (getDataMode() !== "LIVE") {
     return supabaseResponse;
   }
 

@@ -6,6 +6,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { PageBreadcrumb } from "@/components/ui/prototype";
 import { isSupabaseEnabled } from "@/lib/supabase/server";
 
 const actionLabel: Record<string, string> = {
@@ -21,9 +22,12 @@ export default async function AuditoriaPage() {
   return (
     <div className="space-y-6">
       <section className="space-y-2">
-        <p className="text-xs font-semibold tracking-[0.14em] text-[var(--brand)] uppercase">
-          Governança · Fase 5
-        </p>
+        <PageBreadcrumb
+          items={[
+            { label: "Configurações", href: "/configuracoes" },
+            { label: "Auditoria" },
+          ]}
+        />
         <h1 className="font-[family-name:var(--font-display)] text-3xl font-semibold tracking-tight">
           Auditoria
         </h1>

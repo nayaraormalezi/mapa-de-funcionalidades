@@ -1,4 +1,5 @@
 import { EditarCanaisClient } from "@/app/canais/editar/editar-canais-client";
+import { getAuthState } from "@/lib/auth";
 import { getDatabase } from "@/services/db";
 import { redirect } from "next/navigation";
 
@@ -7,6 +8,11 @@ export default async function EditarCanaisPage({
 }: {
   searchParams: Promise<{ publico?: string }>;
 }) {
+  const auth = await getAuthState();
+  if (!auth.canEdit) {
+    redirect("/canais");
+  }
+
   const { publico } = await searchParams;
   const db = await getDatabase();
 

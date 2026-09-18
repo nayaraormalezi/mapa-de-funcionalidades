@@ -1,27 +1,26 @@
 import Image from "next/image";
 import { cn } from "@/lib/utils";
 
-/** Logotipo oficial CAIXA Consórcio (SVG). */
+/** Logotipo oficial CAIXA Consórcio. */
 export function CaixaConsorcioLogo({
   className,
   compact = false,
 }: {
   className?: string;
-  /** Monograma do X para sidebar recolhida. */
+  /** Símbolo X — sidebar recolhida. */
   compact?: boolean;
 }) {
   if (compact) {
     return (
-      <svg
-        viewBox="0 0 42 36"
-        className={cn("h-8 w-auto", className)}
-        role="img"
-        aria-label="CAIXA Consórcio"
-      >
-        <title>CAIXA Consórcio</title>
-        <path d="M2 2 L14 2 L30 34 L18 34 Z" fill="#FFFFFF" />
-        <path d="M28 2 L40 2 L24 34 L12 34 Z" fill="#F39200" />
-      </svg>
+      <Image
+        src="/logo-caixa-consorcio-x.svg"
+        alt="CAIXA Consórcio"
+        width={79}
+        height={55}
+        priority
+        unoptimized
+        className={cn("h-7 w-auto object-contain", className)}
+      />
     );
   }
 

@@ -1,5 +1,12 @@
 "use client";
 
+/**
+ * @deprecated Fase 15.5 — página Insights removida do hub.
+ * A geração de insights permanece em `@/services/intelligence` (`getIntelligenceInsights`).
+ * UI de exibição: `InsightCard` + Comparações / Transformações / Relatórios.
+ * Este arquivo é mantido apenas como referência de layout legado; não é importado.
+ */
+
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
@@ -12,15 +19,21 @@ import {
   UnderlineTabs,
 } from "@/components/ui/prototype";
 import { PriorityBadge } from "@/components/badges/priority-badge";
+import { useAuth } from "@/components/auth/auth-provider";
 import {
   evidenceTypeLabel,
-  experienceLabel,
   gapTypeLabel,
+  insightSeverityLabel,
+  normalizeInsightSeverity,
+  CONCEPT_LABEL,
 } from "@/lib/labels";
+import {
+  HEALTH_BUCKET_LABEL,
+  type HealthBucket,
+} from "@/lib/health";
 import { cn, formatDate, formatPercent } from "@/lib/utils";
 import type {
   EvidenceType,
-  ExperienceLevel,
   GapStatus,
   GapType,
   Priority,
@@ -31,13 +44,12 @@ import {
   ArrowRight,
   Clock3,
   FileText,
-  Lightbulb,
   Sparkles,
   Target,
 } from "lucide-react";
 
 type ExperienceItem = {
-  level: ExperienceLevel;
+  level: HealthBucket;
   count: number;
   percentage: number;
 };
@@ -93,7 +105,9 @@ type EvidenceLite = {
 type ProblemFeature = {
   id: string;
   name: string;
-  experience: ExperienceLevel;
+  experience?: string;
+  healthScore: number | null;
+  healthSignal: "GOOD" | "ATTENTION" | "CRITICAL" | "UNKNOWN";
   audienceName: string;
   channelName: string;
 };
@@ -103,22 +117,22 @@ const SEVERITY_META: Record<
   { label: string; className: string; bar: string }
 > = {
   critical: {
-    label: "Crítico",
+    label: insightSeverityLabel.critical,
     className: "bg-rose-50 text-rose-800 ring-rose-200",
     bar: "bg-rose-500",
   },
   warning: {
-    label: "Atenção",
+    label: insightSeverityLabel.warning,
     className: "bg-amber-50 text-amber-900 ring-amber-200",
     bar: "bg-amber-500",
   },
-  opportunity: {
-    label: "Oportunidade",
+  watch: {
+    label: insightSeverityLabel.watch,
     className: "bg-[var(--brand-soft)] text-[var(--brand)] ring-[var(--brand-ring)]",
     bar: "bg-[var(--brand)]",
   },
   info: {
-    label: "Info",
+    label: insightSeverityLabel.info,
     className: "bg-slate-100 text-slate-700 ring-slate-200",
     bar: "bg-slate-400",
   },
@@ -149,17 +163,22 @@ export function InsightsClient({
   evidences: EvidenceLite[];
   problemFeatures: ProblemFeature[];
 }) {
+  const { canAdmin } = useAuth();
   const [severity, setSeverity] = useState<"" | InsightSeverity>("");
   const [tab, setTab] = useState<Tab>("insights");
 
   const filteredInsights = useMemo(() => {
     if (!severity) return insights;
-    return insights.filter((item) => item.severity === severity);
+    return insights.filter(
+      (item) => normalizeInsightSeverity(item.severity) === severity,
+    );
   }, [insights, severity]);
 
   const counts = useMemo(() => {
-    const base = { critical: 0, warning: 0, opportunity: 0, info: 0 };
-    for (const item of insights) base[item.severity] += 1;
+    const base = { critical: 0, warning: 0, watch: 0, info: 0 };
+    for (const item of insights) {
+      base[normalizeInsightSeverity(item.severity)] += 1;
+    }
     return base;
   }, [insights]);
 
@@ -168,19 +187,17 @@ export function InsightsClient({
   );
   const frictionCount =
     (experience.find((e) => e.level === "CRITICAL")?.count ?? 0) +
-    (experience.find((e) => e.level === "NEEDS_IMPROVEMENT")?.count ?? 0);
+    (experience.find((e) => e.level === "ATTENTION")?.count ?? 0);
 
   return (
     <div className="space-y-5">
       <PageHeader
-        breadcrumb="Análises › Insights"
+        breadcrumb={[
+          { label: "Inteligência", href: "/inteligencia" },
+          { label: "Insights" },
+        ]}
         title="Insights"
-        description="Sinais de experiência, gaps, evidências e oportunidades para orientar decisões de produto e UX."
-        callout={{
-          title: "Do sinal à ação",
-          body: "Priorize alertas críticos, valide com evidências e leve oportunidades para o roadmap.",
-          icon: Lightbulb,
-        }}
+        description={`Sinais de experiência, ${CONCEPT_LABEL.lacunas.toLowerCase()}, ${CONCEPT_LABEL.problemas.toLowerCase()} e ${CONCEPT_LABEL.opportunities.toLowerCase()}. Comparações e Transformações estão nas abas deste domínio.`}
       />
 
       <SurfaceCard className="p-4">
@@ -191,10 +208,10 @@ export function InsightsClient({
             onChange={(v) => setSeverity(v as "" | InsightSeverity)}
             options={[
               { value: "", label: "Todas" },
-              { value: "critical", label: "Crítico" },
-              { value: "warning", label: "Atenção" },
-              { value: "opportunity", label: "Oportunidade" },
-              { value: "info", label: "Info" },
+              { value: "critical", label: insightSeverityLabel.critical },
+              { value: "warning", label: insightSeverityLabel.warning },
+              { value: "watch", label: insightSeverityLabel.watch },
+              { value: "info", label: insightSeverityLabel.info },
             ]}
             className="min-w-[160px]"
           />
@@ -210,9 +227,9 @@ export function InsightsClient({
           tone="info"
         />
         <StatCard
-          label="Gaps abertos"
+          label={`${CONCEPT_LABEL.issues} abertas`}
           value={gapIntel.totalOpen}
-          hint={`${gapIntel.criticalCount} críticos`}
+          hint={`${gapIntel.criticalCount} críticas · catálogo`}
           tone={gapIntel.criticalCount > 0 ? "warning" : "default"}
           icon={AlertTriangle}
         />
@@ -251,7 +268,7 @@ export function InsightsClient({
               </SurfaceCard>
             ) : (
               filteredInsights.map((insight) => {
-                const meta = SEVERITY_META[insight.severity];
+                const meta = SEVERITY_META[normalizeInsightSeverity(insight.severity)];
                 return (
                   <SurfaceCard key={insight.id} className="p-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -278,9 +295,13 @@ export function InsightsClient({
                           {insight.description}
                         </p>
                       </div>
-                      {insight.href ? (
+                      {insight.href || insight.id === "critical-gaps" ? (
                         <Link
-                          href={insight.href}
+                          href={
+                            insight.id === "critical-gaps"
+                              ? "/gaps?tab=issues"
+                              : (insight.href as string)
+                          }
                           className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-[var(--brand)] hover:underline"
                         >
                           Investigar
@@ -296,10 +317,13 @@ export function InsightsClient({
 
           <div className="space-y-4">
             <SurfaceCard className="p-4">
-              <SectionTitle>Gaps críticos</SectionTitle>
+              <SectionTitle>{CONCEPT_LABEL.issues} críticas</SectionTitle>
+              <p className="mb-2 text-[11px] text-[var(--muted-foreground)]">
+                Catálogo cadastrado — distinto dos {CONCEPT_LABEL.coverageGaps.toLowerCase()} do hub.
+              </p>
               {gapIntel.criticalGaps.length === 0 ? (
                 <p className="text-sm text-[var(--muted-foreground)]">
-                  Nenhum gap crítico aberto no momento.
+                  Nenhuma {CONCEPT_LABEL.issue.toLowerCase()} crítica aberta no momento.
                 </p>
               ) : (
                 <ul className="space-y-2">
@@ -324,10 +348,10 @@ export function InsightsClient({
                 </ul>
               )}
               <Link
-                href="/gaps"
+                href="/gaps?tab=issues"
                 className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-[var(--brand)] hover:underline"
               >
-                Ver todos os gaps
+                Mostrar {CONCEPT_LABEL.issues.toLowerCase()} no hub
                 <ArrowRight className="h-3 w-3" />
               </Link>
             </SurfaceCard>
@@ -359,7 +383,7 @@ export function InsightsClient({
                 </ul>
               )}
               <Link
-                href="/comparacao"
+                href="/inteligencia/comparacoes"
                 className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-[var(--brand)] hover:underline"
               >
                 Abrir comparação
@@ -379,7 +403,7 @@ export function InsightsClient({
                 <div key={item.level}>
                   <div className="mb-1 flex justify-between text-sm">
                     <span className="font-medium">
-                      {experienceLabel[item.level]}
+                      {HEALTH_BUCKET_LABEL[item.level]}
                     </span>
                     <span className="text-xs text-[var(--muted-foreground)]">
                       {item.count} · {formatPercent(item.percentage)}
@@ -390,7 +414,7 @@ export function InsightsClient({
                     barClassName={
                       item.level === "CRITICAL"
                         ? "bg-rose-500"
-                        : item.level === "NEEDS_IMPROVEMENT"
+                        : item.level === "ATTENTION"
                           ? "bg-amber-500"
                           : item.level === "GOOD"
                             ? "bg-emerald-500"
@@ -421,7 +445,9 @@ export function InsightsClient({
                       </p>
                       <p className="mt-0.5 text-[11px] text-[var(--muted-foreground)]">
                         {feature.audienceName} · {feature.channelName} ·{" "}
-                        {experienceLabel[feature.experience]}
+                        {feature.healthScore != null
+                          ? `Saúde ${feature.healthScore}`
+                          : "Não avaliada"}
                       </p>
                     </Link>
                   </li>
@@ -455,7 +481,7 @@ export function InsightsClient({
               </div>
             )}
             <Link
-              href="/transformacao"
+              href="/inteligencia/transformacoes"
               className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-[var(--brand)] hover:underline"
             >
               Abrir transformação de canais
@@ -470,12 +496,14 @@ export function InsightsClient({
           <SurfaceCard className="p-4 xl:col-span-2">
             <SectionTitle
               action={
-                <Link
-                  href="/cadastros/evidencias"
-                  className="text-xs font-medium text-[var(--brand)] hover:underline"
-                >
-                  Gerenciar evidências
-                </Link>
+                canAdmin ? (
+                  <Link
+                    href="/configuracoes?tab=cadastros"
+                    className="text-xs font-medium text-[var(--brand)] hover:underline"
+                  >
+                    Gerenciar evidências
+                  </Link>
+                ) : undefined
               }
             >
               Evidências recentes
@@ -528,7 +556,9 @@ export function InsightsClient({
           </SurfaceCard>
 
           <SurfaceCard className="p-4 xl:col-span-2">
-            <SectionTitle>Gaps por tipo</SectionTitle>
+            <SectionTitle>
+              {CONCEPT_LABEL.problemas} por tipo
+            </SectionTitle>
             <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3">
               {gapIntel.byType.map((item) => (
                 <div
@@ -546,8 +576,11 @@ export function InsightsClient({
             </div>
             {gapIntel.withoutActionPlan > 0 ? (
               <p className="mt-3 text-xs text-amber-800">
-                {gapIntel.withoutActionPlan} gap(s) sem plano de ação
-                cadastrado.
+                {gapIntel.withoutActionPlan}{" "}
+                {gapIntel.withoutActionPlan === 1
+                  ? CONCEPT_LABEL.problema.toLowerCase()
+                  : CONCEPT_LABEL.problemas.toLowerCase()}{" "}
+                sem plano de ação cadastrado.
               </p>
             ) : null}
           </SurfaceCard>

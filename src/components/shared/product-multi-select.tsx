@@ -1,0 +1,99 @@
+"use client";
+
+import { useState } from "react";
+import { Check } from "lucide-react";
+import { PRODUCT_CATALOG } from "@/lib/products";
+import { cn } from "@/lib/utils";
+
+type ProductOption = { value: string; label: string };
+
+/**
+ * Multi-seleção de produtos (aplicabilidade).
+ * Envia `product_ids` como CSV no form (compatível com upserts do CRUD).
+ */
+export function ProductMultiSelect({
+  name = "product_ids",
+  label = "Produtos",
+  options,
+  defaultSelected,
+  selected: controlledSelected,
+  onChange,
+  required = false,
+  hint = "Selecione um ou mais produtos aos quais isso se aplica.",
+  className,
+}: {
+  name?: string;
+  label?: string;
+  /** Se omitido, usa o catálogo completo de produtos. */
+  options?: ProductOption[];
+  /** IDs pré-selecionados. `undefined` / vazio = todos marcados (aplicabilidade ampla). */
+  defaultSelected?: string[] | null;
+  /** Modo controlado (opcional). */
+  selected?: string[];
+  onChange?: (ids: string[]) => void;
+  required?: boolean;
+  hint?: string;
+  className?: string;
+}) {
+  const resolvedOptions =
+    options && options.length > 0
+      ? options
+      : PRODUCT_CATALOG.map((p) => ({ value: p.id, label: p.shortName }));
+
+  const allIds = resolvedOptions.map((o) => o.value);
+  const initial =
+    defaultSelected && defaultSelected.length > 0
+      ? defaultSelected.filter((id) => allIds.includes(id))
+      : allIds;
+
+  const [uncontrolled, setUncontrolled] = useState<string[]>(
+    initial.length > 0 ? initial : allIds,
+  );
+
+  const selected = controlledSelected ?? uncontrolled;
+
+  function toggle(id: string) {
+    const next = selected.includes(id)
+      ? selected.filter((x) => x !== id)
+      : [...selected, id];
+    if (controlledSelected === undefined) setUncontrolled(next);
+    onChange?.(next);
+  }
+
+  return (
+    <fieldset className={cn("space-y-2", className)}>
+      <legend className="text-xs font-semibold tracking-wide text-[var(--muted-foreground)] uppercase">
+        {label}
+        {required ? " *" : ""}
+      </legend>
+      {hint ? (
+        <p className="text-xs text-[var(--muted-foreground)]">{hint}</p>
+      ) : null}
+      <div className="flex flex-wrap gap-2">
+        {resolvedOptions.map((opt) => {
+          const active = selected.includes(opt.value);
+          return (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => toggle(opt.value)}
+              aria-pressed={active}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm transition-colors",
+                active
+                  ? "border-[var(--brand)] bg-[var(--brand-soft)] font-medium text-[var(--brand)]"
+                  : "border-slate-200 bg-slate-100 text-slate-500 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-600",
+              )}
+            >
+              {active ? (
+                <Check className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              ) : null}
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
+      <input type="hidden" name={name} value={selected.join(",")} readOnly />
+    </fieldset>
+  );
+}

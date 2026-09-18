@@ -1,106 +1,71 @@
-import { InsightsClient } from "@/app/inteligencia/insights-client";
-import { getDatabase } from "@/services/db";
+import Link from "next/link";
+import { IntelligenceNav } from "@/components/intelligence/intelligence-nav";
 import {
-  getExperienceHealth,
-  getGapIntelligence,
-  getIntelligenceInsights,
-  getMigrationIntelligence,
-  getParityFindings,
-} from "@/services/intelligence";
-import { buildFeatureMapRows } from "@/services/channels";
+  PageHeader,
+  SurfaceCard,
+} from "@/components/ui/prototype";
+import { Button } from "@/components/ui/button";
+import { ArrowLeftRight, ArrowRight, GitBranch } from "lucide-react";
 
-export default async function InsightsPage() {
-  const [
-    insights,
-    experience,
-    gapIntel,
-    migration,
-    parity,
-    rows,
-    db,
-  ] = await Promise.all([
-    getIntelligenceInsights(),
-    getExperienceHealth(),
-    getGapIntelligence(),
-    getMigrationIntelligence(),
-    getParityFindings(),
-    buildFeatureMapRows(),
-    getDatabase(),
-  ]);
-
-  const featureNameById = new Map(
-    rows.map((r) => [r.featureId, r.featureName]),
-  );
-
-  const evidences = db.evidences
-    .map((evidence) => ({
-      id: evidence.id,
-      title: evidence.title,
-      type: evidence.type,
-      description: evidence.description,
-      date: evidence.date,
-      responsible: evidence.responsible,
-      featureId: evidence.featureId,
-      featureName: featureNameById.get(evidence.featureId) ?? "Funcionalidade",
-      link: evidence.link,
-    }))
-    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
-    .slice(0, 12);
-
-  const problemFeatures = Array.from(
-    new Map(
-      rows
-        .filter(
-          (r) =>
-            r.experience === "NEEDS_IMPROVEMENT" || r.experience === "CRITICAL",
-        )
-        .map((r) => [
-          r.featureId,
-          {
-            id: r.featureId,
-            name: r.featureName,
-            experience: r.experience,
-            audienceName: r.audienceName,
-            channelName: r.channelName,
-          },
-        ]),
-    ).values(),
-  ).slice(0, 8);
-
+/**
+ * Hub do domínio Inteligência (Fase 15.5).
+ * Insights deixaram de ser página/KPI — são resultados derivados em
+ * Comparações e Transformações (e síntese em Relatórios).
+ */
+export default function InteligenciaPage() {
   return (
-    <InsightsClient
-      insights={insights}
-      experience={experience}
-      gapIntel={{
-        totalOpen: gapIntel.totalOpen,
-        criticalCount: gapIntel.criticalGaps.length,
-        withoutActionPlan: gapIntel.withoutActionPlan,
-        byType: gapIntel.byType,
-        criticalGaps: gapIntel.criticalGaps.slice(0, 5).map((g) => ({
-          id: g.id,
-          title: g.title,
-          type: g.type,
-          impact: g.impact,
-          priority: g.priority,
-          status: g.status,
-        })),
-      }}
-      migration={{
-        readinessPercent: migration.readinessPercent,
-        totalUndefined: migration.totalUndefined,
-        totalMigrate: migration.totalMigrate,
-        totalCreate: migration.totalCreate,
-        risks: migration.risks.slice(0, 5),
-      }}
-      parity={parity.slice(0, 8).map((p) => ({
-        featureId: p.featureId,
-        featureName: p.featureName,
-        audienceName: p.audienceName,
-        momentName: p.momentName,
-        issue: p.issue,
-      }))}
-      evidences={evidences}
-      problemFeatures={problemFeatures}
-    />
+    <div className="space-y-5">
+      <PageHeader
+        breadcrumb={[{ label: "Inteligência" }]}
+        title="Inteligência"
+        description="Encontre padrões, diferenças e sinais que ajudam a compreender e evoluir a experiência."
+      />
+
+      <SurfaceCard className="border-[#e6f0f7] bg-[#f5f9fc] p-4 text-sm text-slate-700">
+        <strong>Como ler:</strong> Inteligência cruza dados do PRISMA.
+        Insights são resultados dessas análises — não cadastros. Lacunas,
+        problemas e oportunidades ficam em Melhorias.
+      </SurfaceCard>
+
+      <IntelligenceNav />
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <SurfaceCard className="flex flex-col p-5">
+          <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--brand-soft)] text-[var(--brand)]">
+            <ArrowLeftRight className="h-5 w-5" />
+          </div>
+          <h2 className="text-lg font-semibold text-slate-900">Comparações</h2>
+          <p className="mt-1.5 flex-1 text-sm text-[var(--muted-foreground)]">
+            Compare canais, públicos ou dimensões do ecossistema e identifique
+            diferenças de cobertura, status e saúde.
+          </p>
+          <Button asChild className="mt-4 w-fit" size="sm">
+            <Link href="/inteligencia/comparacoes">
+              Comparar
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </Button>
+        </SurfaceCard>
+
+        <SurfaceCard className="flex flex-col p-5">
+          <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--brand-soft)] text-[var(--brand)]">
+            <GitBranch className="h-5 w-5" />
+          </div>
+          <h2 className="text-lg font-semibold text-slate-900">
+            Transformações
+          </h2>
+          <p className="mt-1.5 flex-1 text-sm text-[var(--muted-foreground)]">
+            Analise a transição Atual → Futuro, destinos indefinidos e riscos
+            de migração entre canais.
+          </p>
+          <Button asChild className="mt-4 w-fit" size="sm">
+            <Link href="/inteligencia/transformacoes">
+              Analisar transformação
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </Button>
+        </SurfaceCard>
+      </div>
+    </div>
   );
 }

@@ -1,34 +1,56 @@
-import { GapsClient } from "@/app/gaps/gaps-client";
-import { getAudiences, getJourneys, getMoments } from "@/services/channels";
-import { getGaps } from "@/services/gaps";
-import { getGapIntelligence } from "@/services/intelligence";
+import { Suspense } from "react";
+import { GapsClient, type HubTab } from "@/app/gaps/gaps-client";
+import { PRODUCT_CATALOG } from "@/lib/products";
+import {
+  getAudiences,
+  getJourneys,
+  getMoments,
+} from "@/services/channels";
+import { getHubSignals } from "@/services/gaps-opportunities";
 
-export default async function GapsPage() {
-  const [gaps, audiences, moments, journeys, intel] = await Promise.all([
-    getGaps(),
+function parseTab(raw: string | undefined): HubTab {
+  if (raw === "oportunidades" || raw === "opportunities") return "opportunities";
+  if (raw === "problemas" || raw === "issues") return "issues";
+  if (raw === "lacunas" || raw === "gaps") return "gaps";
+  return "gaps";
+}
+
+export default async function GapsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string }>;
+}) {
+  const { tab } = await searchParams;
+  const [hub, audiences, moments, journeys] = await Promise.all([
+    getHubSignals(),
     getAudiences(),
     getMoments(),
     getJourneys(),
-    getGapIntelligence(),
   ]);
 
-  const journeyNameById = Object.fromEntries(
-    journeys.map((j) => [j.id, j.name]),
-  );
+  const products = PRODUCT_CATALOG.map((p) => ({
+    id: p.id,
+    name: p.name,
+  }));
 
   return (
-    <GapsClient
-      gaps={gaps}
-      audiences={audiences.map((a) => ({ id: a.id, name: a.name }))}
-      moments={moments.map((m) => ({ id: m.id, name: m.name }))}
-      journeyNameById={journeyNameById}
-      summary={{
-        totalOpen: intel.totalOpen,
-        byType: intel.byType,
-        byImpact: intel.byImpact,
-        transitionCount: intel.transitionGaps.length,
-        criticalCount: intel.criticalGaps.length,
-      }}
-    />
+    <Suspense
+      fallback={
+        <div className="p-6 text-sm text-[var(--muted-foreground)]">
+          Carregando melhorias…
+        </div>
+      }
+    >
+      <GapsClient
+        coverageGaps={hub.coverageGaps}
+        opportunities={hub.opportunities}
+        issues={hub.issues}
+        audiences={audiences.map((a) => ({ id: a.id, name: a.name }))}
+        moments={moments.map((m) => ({ id: m.id, name: m.name }))}
+        journeys={journeys.map((j) => ({ id: j.id, name: j.name }))}
+        products={products}
+        initialTab={parseTab(tab)}
+      />
+    </Suspense>
   );
 }

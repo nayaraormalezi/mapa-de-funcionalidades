@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/card";
 import { withEvidenceFileUrls } from "@/lib/evidence-files";
 import { evidenceTypeLabel } from "@/lib/labels";
+import { PageBreadcrumb } from "@/components/ui/prototype";
 import { isSupabaseEnabled } from "@/lib/supabase/server";
 import { formatDate } from "@/lib/utils";
 import { getDatabase } from "@/services/db";
@@ -42,6 +43,7 @@ export default async function CadastroEvidenciasPage({
         <CardContent>
           <CrudForm key={editing?.id ?? "new"} action={upsertEvidence}>
             {editing ? <input type="hidden" name="id" value={editing.id} /> : null}
+            <input type="hidden" name="owner_type" value="FEATURE" />
             <div className="grid gap-3 md:grid-cols-2">
               <Field
                 label="Título"
@@ -142,13 +144,21 @@ function Header({ title }: { title: string }) {
   return (
     <div className="space-y-3">
       <BackButton href="/configuracoes?tab=cadastros" />
-      <div>
-        <p className="text-xs font-semibold tracking-[0.14em] text-[var(--brand)] uppercase">
-          Cadastros
-        </p>
+      <div className="space-y-1">
+        <PageBreadcrumb
+          items={[
+            { label: "Configurações", href: "/configuracoes" },
+            { label: "Cadastros", href: "/configuracoes?tab=cadastros" },
+            { label: title },
+          ]}
+        />
         <h1 className="font-[family-name:var(--font-display)] text-2xl font-semibold">
           {title}
         </h1>
+        <p className="mt-2 max-w-2xl text-sm text-[var(--muted-foreground)]">
+          Administração de Evidências. A fonte canônica continua sendo a entidade
+          Evidence (Feature ou Evaluation) — este CRUD não cria modelo paralelo.
+        </p>
       </div>
     </div>
   );

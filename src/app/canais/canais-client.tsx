@@ -1,8 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useAuth } from "@/components/auth/auth-provider";
 import { EditChannelsAudienceModal } from "@/app/canais/edit-channels-audience-modal";
+import { DashboardChannelTabs } from "@/app/dashboard/dashboard-channel-tabs";
 import {
   FilterSelect,
   PageHeader,
@@ -45,9 +47,20 @@ function channelStatusLabel(row: ChannelContextRow) {
   return "Operação";
 }
 
+type TransformationTab = {
+  id: string;
+  label: string;
+  moments: {
+    momentName: string;
+    current: string[];
+    future: string[];
+  }[];
+};
+
 export function CanaisClient({
   contexts,
   audiences,
+  channelTabs = [],
   initialChannelId,
 }: {
   contexts: ChannelContextRow[];
@@ -57,8 +70,10 @@ export function CanaisClient({
     code: AudienceCode;
     description?: string;
   }[];
+  channelTabs?: TransformationTab[];
   initialChannelId?: string;
 }) {
+  const { canEdit } = useAuth();
   const contextForInitial = initialChannelId
     ? contexts.find((c) => c.channelId === initialChannelId)
     : undefined;
@@ -73,6 +88,14 @@ export function CanaisClient({
   const [audienceId, setAudienceId] = useState(defaultAudience);
   const [tab, setTab] = useState<Tab>("all");
   const [editModalOpen, setEditModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.location.hash !== "#transformacao") return;
+    document
+      .getElementById("transformacao")
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
 
   const audienceContexts = useMemo(
     () =>
@@ -133,29 +156,38 @@ export function CanaisClient({
     audiences.find((a) => a.id === audienceId)?.name ?? "Todos";
   const showAudienceColumn = !audienceId;
 
+  const transformationTabs = useMemo(() => {
+    if (!audienceId) return channelTabs;
+    return channelTabs.filter((t) => t.id === audienceId);
+  }, [channelTabs, audienceId]);
+
   return (
     <div className="space-y-5">
       <PageHeader
-        breadcrumb="Canais › Visão geral"
+        breadcrumb={[{ label: "Canais" }]}
         title="Canais"
         description="Conheça os canais atuais e futuros por público, sua cobertura de funcionalidade e os planos de evolução."
         actions={
-          <Button
-            size="sm"
-            type="button"
-            onClick={() => setEditModalOpen(true)}
-          >
-            <PenLine className="h-3.5 w-3.5" />
-            Editar canais
-          </Button>
+          canEdit ? (
+            <Button
+              size="sm"
+              type="button"
+              onClick={() => setEditModalOpen(true)}
+            >
+              <PenLine className="h-3.5 w-3.5" />
+              Editar canais
+            </Button>
+          ) : undefined
         }
       />
 
-      <EditChannelsAudienceModal
-        open={editModalOpen}
-        onClose={() => setEditModalOpen(false)}
-        audiences={audiences}
-      />
+      {canEdit ? (
+        <EditChannelsAudienceModal
+          open={editModalOpen}
+          onClose={() => setEditModalOpen(false)}
+          audiences={audiences}
+        />
+      ) : null}
 
       <SurfaceCard className="p-4">
         <div className="flex flex-wrap items-end gap-3">
@@ -174,6 +206,32 @@ export function CanaisClient({
           />
         </div>
       </SurfaceCard>
+
+      <div id="transformacao" className="scroll-mt-6">
+        <SurfaceCard className="p-5">
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-900">
+                Transformação de canais
+              </h2>
+              <p className="mt-0.5 text-xs text-slate-500">
+                Evolução para uma experiência mais integrada — canais atuais e
+                futuros por momento.
+              </p>
+            </div>
+            <Button
+              size="sm"
+              type="button"
+              variant="outline"
+              onClick={() => setEditModalOpen(true)}
+            >
+              <PenLine className="h-3.5 w-3.5" />
+              Editar transformação
+            </Button>
+          </div>
+          <DashboardChannelTabs tabs={transformationTabs} />
+        </SurfaceCard>
+      </div>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
@@ -224,7 +282,7 @@ export function CanaisClient({
                 ) : null}
                 <th className="px-4 py-3">Momento</th>
                 <th className="px-4 py-3">Situação</th>
-                <th className="px-4 py-3">Funcionalidades</th>
+                <th className="px-4 py-3">Implementações</th>
                 <th className="px-4 py-3">Cobertura</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Próximos marcos</th>
@@ -349,7 +407,7 @@ export function CanaisClient({
                   <Row label="Público" value={selected.audienceName} />
                   <Row label="Momento" value={selected.momentName} />
                   <Row
-                    label="Funcionalidades"
+                    label="Implementações"
                     value={String(selected.featureTotal)}
                   />
                   <Row
@@ -370,19 +428,21 @@ export function CanaisClient({
                       : undefined
                   }
                 />
-                <Link
-                  href={
-                    audienceId
-                      ? `/canais/editar?publico=${audienceId}`
-                      : selected
-                        ? `/canais/editar?publico=${selected.audienceId}`
-                        : "/canais"
-                  }
-                  className="inline-flex items-center gap-1 text-xs font-medium text-[var(--brand)] hover:underline"
-                >
-                  Editar canais deste público{" "}
-                  <ArrowRight className="h-3 w-3" />
-                </Link>
+                {canEdit ? (
+                  <Link
+                    href={
+                      audienceId
+                        ? `/canais/editar?publico=${audienceId}`
+                        : selected
+                          ? `/canais/editar?publico=${selected.audienceId}`
+                          : "/canais"
+                    }
+                    className="inline-flex items-center gap-1 text-xs font-medium text-[var(--brand)] hover:underline"
+                  >
+                    Editar canais deste público{" "}
+                    <ArrowRight className="h-3 w-3" />
+                  </Link>
+                ) : null}
               </div>
             )}
           </SurfaceCard>
@@ -415,28 +475,6 @@ export function CanaisClient({
                 </p>
               </div>
             </div>
-          </SurfaceCard>
-
-          <SurfaceCard className="border-[var(--brand)]/20 bg-[var(--brand-soft)] p-4">
-            <p className="text-sm font-semibold text-[#005ca9]">
-              Evolução dos canais
-            </p>
-            <p className="mt-1 text-xs text-[#005ca9]/90">
-              Acompanhe a transição dos canais atuais para o futuro e entenda o
-              impacto na experiência do usuário.
-            </p>
-            <Link
-              href={
-                audienceId
-                  ? `/transformacao/${audienceId}`
-                  : selected
-                    ? `/transformacao/${selected.audienceId}`
-                    : "/transformacao"
-              }
-              className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-[var(--brand)] hover:underline"
-            >
-              Ver visão de transformação →
-            </Link>
           </SurfaceCard>
         </div>
       </div>

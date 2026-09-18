@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -17,16 +17,24 @@ import { CrudForm, Field } from "@/components/cadastros/crud-form";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { PriorityBadge } from "@/components/badges/priority-badge";
+import { StageBadge } from "@/components/badges/stage-badge";
 import { StatusBadge } from "@/components/badges/status-badge";
 import {
   archiveRecord,
+  ensureJourneyStagesForAudiences,
   upsertUserNeed,
 } from "@/app/actions/crud";
-import { gapStatusLabel, gapTypeLabel } from "@/lib/labels";
+import { ApplicabilityLabel } from "@/components/shared/applicability-label";
+import { MeasurementAndEvidenceFields } from "@/components/shared/measurement-and-evidence-fields";
+import { ProductMultiSelect } from "@/components/shared/product-multi-select";
+import { AudienceMultiSelect } from "@/components/shared/audience-multi-select";
+import { useAuth } from "@/components/auth/auth-provider";
+import { appliesToAudience } from "@/lib/audiences";
+import { appliesToProduct, getProductMeta } from "@/lib/products";
+import { CONCEPT_LABEL, gapStatusLabel, gapTypeLabel } from "@/lib/labels";
 import { cn, formatPercent } from "@/lib/utils";
 import type {
   AudienceCode,
-  EvidenceType,
   FeatureMapRow,
   GapStatus,
   GapType,
@@ -43,8 +51,6 @@ import {
   Flag,
   Grid2x2,
   Home,
-  Info,
-  Lightbulb,
   MapPin,
   Monitor,
   PenLine,
@@ -64,8 +70,10 @@ import {
 } from "lucide-react";
 
 type JourneyStep = {
+  /** JourneyStage id (etapa selecionada). */
   id: string;
   stageId: string;
+  catalogJourneyId?: string;
   audienceId: string;
   name: string;
   description: string;
@@ -76,36 +84,33 @@ type JourneyStep = {
 type Need = {
   id: string;
   journeyId: string;
+  journeyStageId?: string | null;
   name: string;
   description: string;
+  measurement?: string;
   priority: Priority;
+  productIds?: string[];
+  audienceIds?: string[];
 };
 
 type GapLite = {
   id: string;
   title: string;
   journeyId: string;
+  featureId?: string | null;
   status: GapStatus;
   type: GapType;
   priority: Priority;
   impact: Priority;
 };
 
-type EvidenceLite = {
-  id: string;
-  featureId: string;
-  title: string;
-  type: EvidenceType;
-  date: string;
-};
-
 type TabId =
   | "overview"
   | "needs"
   | "features"
+  | "products"
   | "channels"
-  | "gaps"
-  | "evidences";
+  | "gaps";
 
 type JourneyMeta = {
   icon: LucideIcon;
@@ -115,7 +120,7 @@ type JourneyMeta = {
 };
 
 const JOURNEY_META: Record<string, JourneyMeta> = {
-  "jrn-descoberta": {
+  "js-jrn-descoberta": {
     icon: Search,
     longDescription:
       "Conhecer o consórcio e entender se ele atende à necessidade do cliente.",
@@ -124,7 +129,7 @@ const JOURNEY_META: Record<string, JourneyMeta> = {
     insight:
       "Na descoberta, a clareza da oferta e a facilidade de comparação definem se o cliente segue na jornada.",
   },
-  "jrn-consideracao": {
+  "js-jrn-consideracao": {
     icon: FileText,
     longDescription:
       "Avaliar e comparar opções para decidir com segurança.",
@@ -133,7 +138,7 @@ const JOURNEY_META: Record<string, JourneyMeta> = {
     insight:
       "A consideração exige transparência de regras e simulações confiáveis entre canais.",
   },
-  "jrn-contratacao": {
+  "js-jrn-contratacao": {
     icon: PenLine,
     longDescription: "Adquirir o consórcio de forma simples e digital.",
     quote:
@@ -141,7 +146,7 @@ const JOURNEY_META: Record<string, JourneyMeta> = {
     insight:
       "A contratação digital reduz fricção, mas exige consistência entre canais atuais e futuros.",
   },
-  "jrn-onboarding": {
+  "js-jrn-onboarding": {
     icon: User,
     longDescription: "Pós-compra inicial para ativar e orientar o cliente.",
     quote:
@@ -149,7 +154,7 @@ const JOURNEY_META: Record<string, JourneyMeta> = {
     insight:
       "O onboarding bem estruturado reduz dúvidas e antecipa o engajamento no acompanhamento.",
   },
-  "jrn-acompanhamento": {
+  "js-jrn-acompanhamento": {
     icon: ChartNoAxesColumn,
     longDescription:
       "Gerenciar minha cota e acompanhar a evolução do meu consórcio.",
@@ -158,15 +163,16 @@ const JOURNEY_META: Record<string, JourneyMeta> = {
     insight:
       "O acompanhamento é uma das jornadas mais críticas para o cliente, com alta demanda por informações e oportunidades de melhoria na experiência digital.",
   },
-  "jrn-lance": {
+  "js-jrn-lance": {
     icon: Trophy,
-    longDescription: "Aumentar a chance de contemplação com lances.",
+    longDescription:
+      "Aumentar as chances de contemplação por meio de ofertas de lance.",
     quote:
       "Quero ofertar lance com confiança e acompanhar o resultado.",
     insight:
-      "Lance concentra gaps de experiência em canais digitais e inconsistências entre apps.",
+      "Lance concentra fricções de experiência em canais digitais e inconsistências entre apps.",
   },
-  "jrn-contemplacao": {
+  "js-jrn-contemplacao": {
     icon: Target,
     longDescription: "Receber o crédito e entender os próximos passos.",
     quote:
@@ -174,7 +180,7 @@ const JOURNEY_META: Record<string, JourneyMeta> = {
     insight:
       "Contemplação exige comunicação clara e alinhamento de status entre canais.",
   },
-  "jrn-uso-credito": {
+  "js-jrn-uso-credito": {
     icon: Home,
     longDescription: "Utilizar o crédito de forma acompanhada e segura.",
     quote:
@@ -182,7 +188,7 @@ const JOURNEY_META: Record<string, JourneyMeta> = {
     insight:
       "Uso do crédito ainda tem lacunas digitais relevantes, especialmente no SuperApp.",
   },
-  "jrn-pos-uso": {
+  "js-jrn-pos-uso": {
     icon: Calendar,
     longDescription: "Acompanhar a etapa após a utilização do crédito.",
     quote:
@@ -190,7 +196,7 @@ const JOURNEY_META: Record<string, JourneyMeta> = {
     insight:
       "Pós-uso é pouco explorado digitalmente e concentra oportunidades de orientação contínua.",
   },
-  "jrn-encerramento": {
+  "js-jrn-encerramento": {
     icon: Flag,
     longDescription: "Finalizar o plano com clareza e segurança.",
     quote:
@@ -205,7 +211,7 @@ const DEFAULT_META: JourneyMeta = {
   longDescription: "Etapa da jornada do cliente.",
   quote: "Quero concluir esta etapa com clareza e autonomia.",
   insight:
-    "Esta jornada concentra necessidades do usuário com oportunidades de melhoria na cobertura digital.",
+    "Esta etapa concentra necessidades do usuário com oportunidades de melhoria na cobertura digital.",
 };
 
 function coverageBarClass(pct: number) {
@@ -225,19 +231,19 @@ export function JornadasClient({
   journeyStages,
   needs,
   gaps,
-  evidences,
   rows,
   audiences,
   products,
   moments = [],
   journeysCatalog = [],
   channels = [],
+  channelContexts = [],
+  existingFeatures = [],
   initialJourneyId,
 }: {
   journeyStages: JourneyStep[];
   needs: Need[];
   gaps: GapLite[];
-  evidences: EvidenceLite[];
   rows: FeatureMapRow[];
   audiences: {
     id: string;
@@ -249,9 +255,16 @@ export function JornadasClient({
   moments?: { value: string; label: string }[];
   journeysCatalog?: { value: string; label: string; momentIds: string[] }[];
   channels?: { value: string; label: string }[];
+  channelContexts?: {
+    audienceId: string;
+    momentId: string;
+    channelId: string;
+  }[];
+  existingFeatures?: { value: string; label: string; description?: string }[];
   initialJourneyId?: string;
 }) {
   const router = useRouter();
+  const { isAdmin, canEdit } = useAuth();
   const [pendingDelete, startDelete] = useTransition();
   const stageForInitial = initialJourneyId
     ? journeyStages.find((s) => s.id === initialJourneyId)
@@ -272,6 +285,13 @@ export function JornadasClient({
   const [expandedNeedId, setExpandedNeedId] = useState<string | null>(null);
   const [addFeatureOpen, setAddFeatureOpen] = useState(false);
   const [addNeedOpen, setAddNeedOpen] = useState(false);
+  const [needAudienceIds, setNeedAudienceIds] = useState<string[]>([]);
+  const [pendingMissingStages, setPendingMissingStages] = useState<
+    string[] | null
+  >(null);
+  const [pendingEnsureStages, startEnsureStages] = useTransition();
+  const needFormRef = useRef<HTMLFormElement>(null);
+  const allowEnsureStagesRef = useRef(false);
   const [deleteNeed, setDeleteNeed] = useState<{
     id: string;
     name: string;
@@ -297,7 +317,7 @@ export function JornadasClient({
     (initialJourneyId &&
       journeys.some((j) => j.id === initialJourneyId) &&
       initialJourneyId) ||
-    journeys.find((j) => j.id === "jrn-acompanhamento")?.id ||
+    journeys.find((j) => j.id === "js-jrn-acompanhamento")?.id ||
     journeys[0]?.id ||
     "";
 
@@ -313,13 +333,26 @@ export function JornadasClient({
   const meta = JOURNEY_META[journey?.id ?? ""] ?? DEFAULT_META;
   const JourneyIcon = meta.icon;
 
-  const journeyNeeds = useMemo(
-    () => needs.filter((n) => n.journeyId === journey?.id),
-    [needs, journey?.id],
-  );
+  const journeyNeeds = useMemo(() => {
+    return needs.filter((n) => {
+      const stageMatch =
+        n.journeyStageId === journey?.id ||
+        (!n.journeyStageId && n.journeyId === journey?.id);
+      if (!stageMatch) return false;
+      if (audienceId && !appliesToAudience(n.audienceIds, audienceId)) {
+        return false;
+      }
+      if (!product) return true;
+      return appliesToProduct(n.productIds, product);
+    });
+  }, [needs, journey?.id, audienceId, product]);
 
   const journeyRows = useMemo(() => {
-    let scoped = rows.filter((r) => r.journeyId === journey?.id);
+    let scoped = rows.filter(
+      (r) =>
+        r.journeyStageId === journey?.id ||
+        (!r.journeyStageId && r.journeyId === journey?.id),
+    );
     if (audienceId) scoped = scoped.filter((r) => r.audienceId === audienceId);
     if (product) scoped = scoped.filter((r) => r.productId === product || r.product === product);
     if (temporal)
@@ -327,19 +360,76 @@ export function JornadasClient({
     return scoped;
   }, [rows, journey?.id, audienceId, product, temporal]);
 
+  const groupedFeatures = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        featureId: string;
+        featureName: string;
+        needs: string[];
+        channels: {
+          channelId: string;
+          channelName: string;
+          status: FeatureMapRow["status"];
+          phase: FeatureMapRow["phase"];
+        }[];
+      }
+    >();
+
+    for (const row of journeyRows) {
+      const existing = map.get(row.featureId);
+      if (!existing) {
+        map.set(row.featureId, {
+          featureId: row.featureId,
+          featureName: row.featureName,
+          needs: row.userNeedName ? [row.userNeedName] : [],
+          channels: [
+            {
+              channelId: row.channelId,
+              channelName: row.channelName,
+              status: row.status,
+              phase: row.phase,
+            },
+          ],
+        });
+        continue;
+      }
+      if (
+        row.userNeedName &&
+        !existing.needs.includes(row.userNeedName)
+      ) {
+        existing.needs.push(row.userNeedName);
+      }
+      if (!existing.channels.some((c) => c.channelId === row.channelId)) {
+        existing.channels.push({
+          channelId: row.channelId,
+          channelName: row.channelName,
+          status: row.status,
+          phase: row.phase,
+        });
+      }
+    }
+
+    return Array.from(map.values()).sort((a, b) =>
+      a.featureName.localeCompare(b.featureName, "pt-BR"),
+    );
+  }, [journeyRows]);
+
   const featureIds = useMemo(
     () => new Set(journeyRows.map((r) => r.featureId)),
     [journeyRows],
   );
 
-  const journeyGaps = useMemo(
-    () => gaps.filter((g) => g.journeyId === journey?.id),
-    [gaps, journey?.id],
-  );
-
-  const journeyEvidences = useMemo(() => {
-    return evidences.filter((e) => featureIds.has(e.featureId));
-  }, [evidences, featureIds]);
+  const journeyGaps = useMemo(() => {
+    const catalogId = journey?.catalogJourneyId ?? "jrn-consorcio";
+    const stageFeatureIds = new Set(journeyRows.map((r) => r.featureId));
+    return gaps.filter((g) => {
+      if (g.journeyId === journey?.id) return true;
+      if (g.journeyId !== catalogId) return false;
+      if (g.featureId) return stageFeatureIds.has(g.featureId);
+      return stageFeatureIds.size === 0;
+    });
+  }, [gaps, journey?.id, journey?.catalogJourneyId, journeyRows]);
 
   const coverageByChannel = useMemo(() => {
     const map = new Map<
@@ -377,6 +467,51 @@ export function JornadasClient({
         const bo = b.temporal === "FUTURE" ? 1 : 0;
         return ao - bo || b.percentage - a.percentage;
       });
+  }, [journeyRows]);
+
+  const productsInJourney = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        id: string;
+        name: string;
+        features: Set<string>;
+        needs: Set<string>;
+        channels: Set<string>;
+        total: number;
+        available: number;
+      }
+    >();
+    for (const row of journeyRows) {
+      const meta = getProductMeta(row.productId);
+      const entry = map.get(row.productId) ?? {
+        id: row.productId,
+        name: meta.shortName || row.productShortName,
+        features: new Set<string>(),
+        needs: new Set<string>(),
+        channels: new Set<string>(),
+        total: 0,
+        available: 0,
+      };
+      entry.features.add(row.featureId);
+      if (row.userNeedId) entry.needs.add(row.userNeedId);
+      entry.channels.add(row.channelId);
+      entry.total += 1;
+      if (row.phase === "AVAILABLE") entry.available += 1;
+      map.set(row.productId, entry);
+    }
+    return Array.from(map.values())
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        featureCount: p.features.size,
+        needCount: p.needs.size,
+        channelCount: p.channels.size,
+        available: p.available,
+        total: p.total,
+        percentage: p.total === 0 ? 0 : (p.available / p.total) * 100,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
   }, [journeyRows]);
 
   const needsWithCoverage = useMemo(() => {
@@ -418,42 +553,6 @@ export function JornadasClient({
     });
   }, [journeyNeeds, journeyRows]);
 
-  const availableCount = useMemo(
-    () =>
-      new Set(
-        journeyRows
-          .filter((r) => r.phase === "AVAILABLE")
-          .map((r) => r.featureId),
-      ).size,
-    [journeyRows],
-  );
-  const inDevCount = useMemo(
-    () =>
-      new Set(
-        journeyRows
-          .filter((r) =>
-            [
-              "BACKLOG",
-              "UX_UI",
-              "DEVELOPMENT",
-              "HOMOLOGATION",
-              "PAUSED",
-            ].includes(r.phase),
-          )
-          .map((r) => r.featureId),
-      ).size,
-    [journeyRows],
-  );
-
-  const coveragePct =
-    featureIds.size === 0 ? 0 : (availableCount / featureIds.size) * 100;
-  const inDevPct =
-    featureIds.size === 0 ? 0 : (inDevCount / featureIds.size) * 100;
-  const gapsPct =
-    featureIds.size === 0
-      ? 0
-      : (journeyGaps.length / Math.max(featureIds.size, 1)) * 100;
-
   const audienceName =
     audiences.find((a) => a.id === audienceId)?.name ?? "Todos";
 
@@ -461,9 +560,9 @@ export function JornadasClient({
     { id: "overview", label: "Visão geral" },
     { id: "needs", label: "Necessidades", count: journeyNeeds.length },
     { id: "features", label: "Funcionalidades", count: featureIds.size },
+    { id: "products", label: "Produtos", count: productsInJourney.length },
     { id: "channels", label: "Canais" },
-    { id: "gaps", label: "Gaps", count: journeyGaps.length },
-    { id: "evidences", label: "Evidências", count: journeyEvidences.length },
+    { id: "gaps", label: CONCEPT_LABEL.issues, count: journeyGaps.length },
   ];
 
   function clearFilters() {
@@ -475,14 +574,16 @@ export function JornadasClient({
   return (
     <div className="space-y-5">
       <PageHeader
-        breadcrumb="Jornadas › Visão geral"
-        title="Jornadas do cliente"
-        description="Uma visão completa das necessidades, funcionalidades e cobertura por canal em cada etapa da experiência."
+        breadcrumb={[{ label: "Jornadas" }]}
+        title="Jornada do Consórcio"
+        description="Público → etapas → necessidades → funcionalidades. Estrutura compartilhada; particularidades por produto e canal nas implementações."
         actions={
-          <Button size="sm" type="button" onClick={() => setEditModalOpen(true)}>
-            <PenLine className="h-3.5 w-3.5" />
-            Editar jornadas
-          </Button>
+          canEdit ? (
+            <Button size="sm" type="button" onClick={() => setEditModalOpen(true)}>
+              <PenLine className="h-3.5 w-3.5" />
+              Editar jornadas
+            </Button>
+          ) : null
         }
       />
 
@@ -502,9 +603,21 @@ export function JornadasClient({
           value: n.id,
           label: n.name,
           journeyId: n.journeyId,
+          audienceIds: n.audienceIds,
         }))}
         channels={channels}
+        channelContexts={channelContexts}
+        journeyAudienceStages={journeyStages.map((s) => ({
+          audienceId: s.audienceId,
+          journeyId: s.catalogJourneyId ?? "jrn-consorcio",
+          journeyStageId: s.id,
+          momentId: s.momentId,
+          displayName: s.name,
+          sortOrder: s.order,
+        }))}
+        existingFeatures={existingFeatures}
         initial={addFeatureInitial}
+        onCreated={() => router.refresh()}
       />
 
       <ConfirmDialog
@@ -534,63 +647,177 @@ export function JornadasClient({
         }}
       />
 
+      <ConfirmDialog
+        open={Boolean(pendingMissingStages?.length)}
+        title="Adicionar etapa da jornada?"
+        description={
+          pendingMissingStages && journey
+            ? `A etapa "${journey.name}" ainda não existe para: ${pendingMissingStages
+                .map(
+                  (id) => audiences.find((a) => a.id === id)?.name ?? id,
+                )
+                .join(", ")}. Deseja adicionar essa etapa nesses públicos para continuar?`
+            : ""
+        }
+        confirmLabel={
+          pendingEnsureStages ? "Adicionando…" : "Sim, adicionar etapa"
+        }
+        cancelLabel="Não, voltar"
+        onCancel={() => {
+          if (pendingEnsureStages) return;
+          setPendingMissingStages(null);
+          allowEnsureStagesRef.current = false;
+        }}
+        onConfirm={() => {
+          if (!journey || !pendingMissingStages?.length) return;
+          startEnsureStages(async () => {
+            const result = await ensureJourneyStagesForAudiences({
+              journeyId: journey.catalogJourneyId ?? "jrn-consorcio",
+              momentId: journey.momentId,
+              displayName: journey.name,
+              sortOrder: journey.order,
+              audienceIds: pendingMissingStages,
+            });
+            if (!result.ok) {
+              alert(result.message);
+              setPendingMissingStages(null);
+              return;
+            }
+            setPendingMissingStages(null);
+            allowEnsureStagesRef.current = true;
+            // Reenvia o formulário já com as etapas garantidas.
+            queueMicrotask(() => needFormRef.current?.requestSubmit());
+          });
+        }}
+      />
+
       {addNeedOpen && journey ? (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[80] flex items-end justify-center sm:items-center sm:p-4">
           <button
             type="button"
             className="absolute inset-0 bg-slate-950/45"
             aria-label="Fechar"
-            onClick={() => setAddNeedOpen(false)}
+            onClick={() => {
+              setAddNeedOpen(false);
+              setPendingMissingStages(null);
+              allowEnsureStagesRef.current = false;
+            }}
           />
           <div
             role="dialog"
             aria-modal="true"
-            className="relative z-[81] w-full max-w-lg rounded-2xl border border-[var(--border)] bg-white p-5 shadow-2xl"
+            aria-labelledby="add-need-title"
+            className="relative z-[81] flex max-h-[min(92dvh,100%)] w-full max-w-xl flex-col overflow-hidden rounded-t-2xl border border-[var(--border)] bg-white shadow-2xl sm:rounded-2xl"
           >
-            <h2 className="text-lg font-semibold text-slate-900">
-              Adicionar necessidade
-            </h2>
-            <p className="mt-1 text-sm text-[var(--muted-foreground)]">
-              Nova necessidade na etapa {journey.name}.
-            </p>
-            <div className="mt-4">
-              <CrudForm
-                action={upsertUserNeed}
-                submitLabel="Criar necessidade"
-                onSuccess={() => {
-                  setAddNeedOpen(false);
-                  setTab("needs");
-                }}
+            <div className="shrink-0 border-b border-[var(--border)] px-5 pt-5 pb-4">
+              <h2
+                id="add-need-title"
+                className="text-lg font-semibold text-slate-900"
               >
-                <input type="hidden" name="journey_id" value={journey.id} />
-                <div className="grid gap-3">
-                  <Field label="Nome" name="name" required />
-                  <Field
-                    label="Prioridade"
-                    name="priority"
-                    as="select"
-                    defaultValue="MEDIUM"
-                    options={[
-                      { value: "CRITICAL", label: "Crítica" },
-                      { value: "HIGH", label: "Alta" },
-                      { value: "MEDIUM", label: "Média" },
-                      { value: "LOW", label: "Baixa" },
-                    ]}
-                  />
-                  <Field label="Descrição" name="description" as="textarea" />
-                </div>
-              </CrudForm>
+                Nova necessidade na etapa {journey.name}
+              </h2>
+              <p className="mt-1 text-sm text-[var(--muted-foreground)]">
+                A necessidade pode valer para um ou mais públicos nesta etapa da
+                jornada.
+              </p>
             </div>
-            <div className="mt-3 flex justify-end">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => setAddNeedOpen(false)}
-              >
-                Cancelar
-              </Button>
-            </div>
+            <CrudForm
+              formRef={needFormRef}
+              action={upsertUserNeed}
+              submitLabel="Criar necessidade"
+              className="flex min-h-0 flex-1 flex-col space-y-0"
+              bodyClassName="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-5 py-4"
+              actionsClassName="shrink-0 justify-between border-t border-[var(--border)] bg-white px-5 py-4"
+              extraActions={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="ml-auto"
+                  onClick={() => {
+                    setAddNeedOpen(false);
+                    setPendingMissingStages(null);
+                    allowEnsureStagesRef.current = false;
+                  }}
+                >
+                  Cancelar
+                </Button>
+              }
+              onBeforeSubmit={(formData) => {
+                if (allowEnsureStagesRef.current) {
+                  allowEnsureStagesRef.current = false;
+                  return true;
+                }
+                const raw = String(formData.get("audience_ids") ?? "").trim();
+                const selected = raw
+                  ? raw.split(",").map((id) => id.trim()).filter(Boolean)
+                  : needAudienceIds;
+                const missing = selected.filter(
+                  (aid) =>
+                    !journeyStages.some(
+                      (s) =>
+                        s.audienceId === aid &&
+                        s.id === journey.id &&
+                        s.momentId === journey.momentId,
+                    ),
+                );
+                if (missing.length > 0) {
+                  setPendingMissingStages(missing);
+                  return false;
+                }
+                return true;
+              }}
+              onSuccess={() => {
+                setAddNeedOpen(false);
+                setPendingMissingStages(null);
+                setTab("needs");
+              }}
+            >
+              <input type="hidden" name="journey_id" value={journey.id} />
+              <Field label="Nome" name="name" required />
+              <AudienceMultiSelect
+                required
+                options={audiences.map((a) => ({ id: a.id, name: a.name }))}
+                selected={needAudienceIds}
+                onChange={setNeedAudienceIds}
+                hint="Selecione os públicos aos quais esta necessidade se aplica."
+              />
+              {needAudienceIds.some(
+                (aid) =>
+                  !journeyStages.some(
+                    (s) =>
+                      s.audienceId === aid &&
+                      s.id === journey.id &&
+                      s.momentId === journey.momentId,
+                  ),
+              ) ? (
+                <p className="text-xs text-amber-700">
+                  Alguns públicos selecionados ainda não têm a etapa &quot;
+                  {journey.name}&quot;. Ao salvar, pediremos confirmação para
+                  adicioná-la.
+                </p>
+              ) : null}
+              <Field
+                label="Prioridade"
+                name="priority"
+                as="select"
+                defaultValue="MEDIUM"
+                options={[
+                  { value: "CRITICAL", label: "Crítica" },
+                  { value: "HIGH", label: "Alta" },
+                  { value: "MEDIUM", label: "Média" },
+                  { value: "LOW", label: "Baixa" },
+                ]}
+              />
+              <ProductMultiSelect
+                required
+                hint="Selecione os produtos aos quais esta necessidade se aplica."
+              />
+              <Field label="Descrição" name="description" as="textarea" />
+              <MeasurementAndEvidenceFields
+                measurementHint="Como saberemos se essa necessidade foi atendida para o cliente."
+              />
+            </CrudForm>
           </div>
         </div>
       ) : null}
@@ -643,20 +870,28 @@ export function JornadasClient({
       <SurfaceCard className="p-4">
         <SectionTitle
           action={
-            <Link
-              href={`/jornadas/editar?publico=${audienceId}`}
-              className="shrink-0 text-sm font-medium text-[var(--brand)] hover:underline"
-            >
-              Editar esta jornada
-            </Link>
+            canEdit ? (
+              <Link
+                href={`/jornadas/editar?publico=${audienceId}`}
+                className="shrink-0 text-sm font-medium text-[var(--brand)] hover:underline"
+              >
+                Editar esta jornada
+              </Link>
+            ) : undefined
           }
         >
-          Visão das jornadas
+          <span className="inline-flex flex-wrap items-center gap-2">
+            Etapas da jornada
+            {product ? (
+              <span className="rounded-full bg-[var(--brand-soft)] px-2.5 py-0.5 text-[11px] font-semibold tracking-wide text-[var(--brand)] ring-1 ring-[var(--brand)]/15">
+                {products.find((p) => p.id === product)?.name ?? product}
+              </span>
+            ) : null}
+          </span>
         </SectionTitle>
         {!journey ? (
           <p className="rounded-xl border border-dashed border-[var(--border)] px-4 py-8 text-center text-sm text-[var(--muted-foreground)]">
-            Nenhuma etapa cadastrada para {audienceName}. Use &quot;Editar
-            jornadas&quot; para montar a jornada deste público.
+            Nenhuma etapa cadastrada para {audienceName}.
           </p>
         ) : (
         <div className="flex gap-0 overflow-x-auto pb-1 scrollbar-thin">
@@ -758,204 +993,47 @@ export function JornadasClient({
 
         <div className="mt-5">
           {tab === "overview" ? (
-            <div className="space-y-5">
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-                <KpiTile
-                  icon={ClipboardList}
-                  value={journeyNeeds.length}
-                  label="Necessidades"
-                  hint="O que o cliente precisa fazer nesta jornada"
-                  tone="brand"
-                />
-                <KpiTile
-                  icon={Grid2x2}
-                  value={featureIds.size}
-                  label="Funcionalidades"
-                  hint="Total de funcionalidades relacionadas"
-                  tone="slate"
-                />
-                <KpiTile
-                  icon={CheckCircle2}
-                  value={availableCount}
-                  label="Disponíveis"
-                  hint={`${formatPercent(coveragePct)} de cobertura`}
-                  tone="success"
-                  bar={coveragePct}
-                />
-                <KpiTile
-                  icon={Settings2}
-                  value={inDevCount}
-                  label="Em desenvolvimento"
-                  hint={`${formatPercent(inDevPct)} de cobertura`}
-                  tone="warning"
-                  bar={inDevPct}
-                />
-                <KpiTile
-                  icon={ShieldAlert}
-                  value={journeyGaps.length}
-                  label="Gaps identificados"
-                  hint={`${formatPercent(gapsPct)} de cobertura`}
-                  tone="danger"
-                  bar={gapsPct}
-                />
-              </div>
-
-              <div className="grid gap-4 xl:grid-cols-2">
-                <div>
-                  <SectionTitle
-                    action={
-                      <button
-                        type="button"
-                        onClick={() => setTab("needs")}
-                        className="text-xs font-medium text-[var(--brand)] hover:underline"
-                      >
-                        Ver todas →
-                      </button>
-                    }
-                  >
-                    Principais necessidades
-                  </SectionTitle>
-                  <div className="space-y-3">
-                    {needsWithCoverage.slice(0, 6).map(({ need, total, pct }) => (
-                      <div
-                        key={need.id}
-                        className="flex items-start gap-2.5 rounded-xl border border-[var(--border)] bg-white px-3 py-2.5"
-                      >
-                        <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brand)]" />
-                        <div className="min-w-0 flex-1">
-                          <div className="mb-1.5 flex items-start justify-between gap-2">
-                            <div className="min-w-0">
-                              <p className="text-sm font-medium text-slate-800">
-                                {need.name}
-                              </p>
-                              <p className="text-[11px] text-slate-500">
-                                {total}{" "}
-                                {total === 1
-                                  ? "funcionalidade"
-                                  : "funcionalidades"}
-                              </p>
-                            </div>
-                            <span
-                              className={cn(
-                                "shrink-0 text-xs font-semibold tabular-nums",
-                                pct >= 70
-                                  ? "text-emerald-600"
-                                  : pct >= 40
-                                    ? "text-amber-600"
-                                    : "text-rose-600",
-                              )}
-                            >
-                              {formatPercent(pct)}
-                            </span>
-                          </div>
-                          <ProgressBar
-                            value={pct}
-                            barClassName={coverageBarClass(pct)}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                    {needsWithCoverage.length === 0 ? (
-                      <p className="text-sm text-[var(--muted-foreground)]">
-                        Nenhuma necessidade nesta jornada.
-                      </p>
-                    ) : null}
-                  </div>
-                </div>
-
-                <div>
-                  <SectionTitle
-                    action={
-                      <button
-                        type="button"
-                        onClick={() => setTab("channels")}
-                        className="text-xs font-medium text-[var(--brand)] hover:underline"
-                      >
-                        Ver detalhes →
-                      </button>
-                    }
-                  >
-                    Cobertura por canal
-                    <span className="ml-1 font-normal text-slate-400">
-                      ({audienceName} – {journey.name})
-                    </span>
-                  </SectionTitle>
-                  <div className="space-y-3">
-                    {coverageByChannel.map((ch) => {
-                      const Icon = channelIcon(ch.name, ch.temporal);
-                      return (
-                        <div
-                          key={ch.id}
-                          className="flex items-center gap-2.5 rounded-xl border border-[var(--border)] bg-white px-3 py-2.5"
-                        >
-                          <div
-                            className={cn(
-                              "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
-                              ch.temporal === "FUTURE"
-                                ? "bg-[var(--accent-soft)] text-[var(--accent)]"
-                                : "bg-[var(--brand-soft)] text-[var(--brand)]",
-                            )}
-                          >
-                            <Icon className="h-4 w-4" />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="mb-1.5 flex items-center justify-between gap-2">
-                              <span className="truncate text-sm font-medium text-slate-800">
-                                {ch.temporal === "FUTURE"
-                                  ? `${ch.name} (em breve)`
-                                  : ch.name}
-                              </span>
-                              <span className="shrink-0 text-xs font-semibold text-slate-600 tabular-nums">
-                                {formatPercent(ch.percentage)}
-                              </span>
-                            </div>
-                            <ProgressBar
-                              value={ch.percentage}
-                              barClassName={
-                                ch.temporal === "FUTURE"
-                                  ? "bg-[var(--accent)]"
-                                  : "bg-[var(--brand)]"
-                              }
-                            />
-                          </div>
-                        </div>
-                      );
-                    })}
-                    {coverageByChannel.length === 0 ? (
-                      <p className="text-sm text-[var(--muted-foreground)]">
-                        Sem funcionalidades nesta jornada com o filtro atual.
-                      </p>
-                    ) : null}
-                  </div>
-                  <p className="mt-4 flex gap-2 rounded-lg bg-[var(--brand-soft)] px-3 py-2.5 text-xs text-[#005ca9]">
-                    <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                    O SuperApp concentrará as funcionalidades dos canais
-                    atuais, proporcionando uma experiência mais simples e
-                    integrada.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-3 rounded-xl border border-[#fde8c8] bg-[#fffbeb] p-4 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex gap-3">
-                  <Lightbulb className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
-                  <div>
-                    <p className="text-sm font-semibold text-amber-950">
-                      Insights dessa jornada
-                    </p>
-                    <p className="mt-1 text-xs leading-relaxed text-amber-900/80">
-                      {meta.insight}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setTab("evidences")}
-                  className="shrink-0 text-xs font-medium text-amber-800 hover:underline"
-                >
-                  Ver insights →
-                </button>
-              </div>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+              <KpiTile
+                icon={ClipboardList}
+                value={journeyNeeds.length}
+                label="Necessidades"
+                hint="Conteúdo desta etapa da jornada"
+                tone="brand"
+                onClick={() => setTab("needs")}
+              />
+              <KpiTile
+                icon={Grid2x2}
+                value={featureIds.size}
+                label="Funcionalidades"
+                hint="Relacionadas às necessidades desta etapa"
+                tone="slate"
+                onClick={() => setTab("features")}
+              />
+              <KpiTile
+                icon={CheckCircle2}
+                value={productsInJourney.length}
+                label="Produtos"
+                hint="Com aplicabilidade nesta etapa"
+                tone="success"
+                onClick={() => setTab("products")}
+              />
+              <KpiTile
+                icon={Settings2}
+                value={coverageByChannel.length}
+                label="Canais"
+                hint="Contextos de implementação"
+                tone="warning"
+                onClick={() => setTab("channels")}
+              />
+              <KpiTile
+                icon={ShieldAlert}
+                value={journeyGaps.length}
+                label={CONCEPT_LABEL.issues}
+                hint={`${CONCEPT_LABEL.issues} nesta etapa`}
+                tone="danger"
+                onClick={() => setTab("gaps")}
+              />
             </div>
           ) : null}
 
@@ -965,21 +1043,32 @@ export function JornadasClient({
                 <p className="text-sm text-[var(--muted-foreground)]">
                   Necessidades da etapa {journey?.name ?? ""}
                 </p>
-                <Button
-                  type="button"
-                  size="sm"
-                  className="gap-1.5"
-                  disabled={!journey}
-                  onClick={() => setAddNeedOpen(true)}
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  Adicionar necessidade
-                </Button>
+                {canEdit ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="gap-1.5"
+                    disabled={!journey}
+                    onClick={() => {
+                      setNeedAudienceIds(
+                        audienceId
+                          ? [audienceId]
+                          : audiences.map((a) => a.id),
+                      );
+                      setPendingMissingStages(null);
+                      allowEnsureStagesRef.current = false;
+                      setAddNeedOpen(true);
+                    }}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Adicionar necessidade
+                  </Button>
+                ) : null}
               </div>
               <div className="divide-y divide-[var(--border)] rounded-xl border border-[var(--border)]">
               {needsWithCoverage.length === 0 ? (
                 <p className="p-4 text-sm text-[var(--muted-foreground)]">
-                  Nenhuma necessidade nesta jornada.
+                  Nenhuma necessidade nesta etapa.
                 </p>
               ) : (
                 needsWithCoverage.map(
@@ -1008,6 +1097,9 @@ export function JornadasClient({
                                 {need.name}
                               </p>
                               <PriorityBadge priority={need.priority} />
+                              <ApplicabilityLabel
+                                productIds={need.productIds}
+                              />
                               <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-slate-700">
                                 {total}{" "}
                                 {total === 1
@@ -1018,6 +1110,14 @@ export function JornadasClient({
                             <p className="mt-1 pl-6 text-xs text-[var(--muted-foreground)]">
                               {need.description || "Sem descrição."}
                             </p>
+                            {need.measurement ? (
+                              <p className="mt-1 pl-6 text-[11px] text-slate-600">
+                                <span className="font-semibold text-slate-500">
+                                  Mensuração:
+                                </span>{" "}
+                                {need.measurement}
+                              </p>
+                            ) : null}
                           </button>
                           <div className="flex w-full items-center gap-3 sm:w-auto">
                             <button
@@ -1042,35 +1142,39 @@ export function JornadasClient({
                               </p>
                             </button>
                             <div className="flex shrink-0 items-center gap-1.5">
-                              <Button
-                                asChild
-                                variant="outline"
-                                size="sm"
-                                className="h-8 gap-1 px-2.5"
-                              >
-                                <Link
-                                  href={`/cadastros/necessidades?edit=${need.id}&from=${encodeURIComponent(
-                                    `/jornadas?journey=${journey?.id ?? need.journeyId}`,
-                                  )}`}
+                              {isAdmin ? (
+                                <Button
+                                  asChild
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8 gap-1 px-2.5"
                                 >
-                                  <Pencil className="h-3.5 w-3.5" />
-                                  Editar
-                                </Link>
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="h-8"
-                                onClick={() =>
-                                  setDeleteNeed({
-                                    id: need.id,
-                                    name: need.name,
-                                  })
-                                }
-                              >
-                                Excluir
-                              </Button>
+                                  <Link
+                                    href={`/cadastros/necessidades?edit=${need.id}&from=${encodeURIComponent(
+                                      `/jornadas?journey=${journey?.id ?? need.journeyId}`,
+                                    )}`}
+                                  >
+                                    <Pencil className="h-3.5 w-3.5" />
+                                    Editar
+                                  </Link>
+                                </Button>
+                              ) : null}
+                              {canEdit ? (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8"
+                                  onClick={() =>
+                                    setDeleteNeed({
+                                      id: need.id,
+                                      name: need.name,
+                                    })
+                                  }
+                                >
+                                  Excluir
+                                </Button>
+                              ) : null}
                             </div>
                           </div>
                         </div>
@@ -1108,29 +1212,31 @@ export function JornadasClient({
                                 ))}
                               </ul>
                             )}
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              className="gap-1.5"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setAddFeatureInitial({
-                                  audienceIds: audienceId
-                                    ? [audienceId]
-                                    : [],
-                                  momentId: journey?.momentId,
-                                  journeyId: journey?.id,
-                                  needId: need.id,
-                                  priority: need.priority,
-                                  lockNeed: true,
-                                });
-                                setAddFeatureOpen(true);
-                              }}
-                            >
-                              <Plus className="h-3.5 w-3.5" />
-                              Adicionar funcionalidade
-                            </Button>
+                            {canEdit ? (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="gap-1.5"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setAddFeatureInitial({
+                                    audienceIds: audienceId
+                                      ? [audienceId]
+                                      : [],
+                                    momentId: journey?.momentId,
+                                    journeyId: journey?.catalogJourneyId ?? "jrn-consorcio",
+                                    needId: need.id,
+                                    priority: need.priority,
+                                    lockNeed: true,
+                                  });
+                                  setAddFeatureOpen(true);
+                                }}
+                              >
+                                <Plus className="h-3.5 w-3.5" />
+                                Adicionar funcionalidade
+                              </Button>
+                            ) : null}
                           </div>
                         ) : null}
                       </div>
@@ -1143,46 +1249,151 @@ export function JornadasClient({
           ) : null}
 
           {tab === "features" ? (
-            <div className="overflow-x-auto rounded-xl border border-[var(--border)]">
-              <table className="min-w-full text-left text-sm">
-                <thead className="bg-slate-50 text-xs tracking-wide text-[var(--muted-foreground)] uppercase">
-                  <tr>
-                    <th className="px-4 py-3">Funcionalidade</th>
-                    <th className="px-4 py-3">Necessidade</th>
-                    <th className="px-4 py-3">Canal</th>
-                    <th className="px-4 py-3">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {journeyRows.map((row) => (
-                    <tr
-                      key={row.featureChannelContextId}
-                      className="border-t border-[var(--border)]"
-                    >
-                      <td className="px-4 py-3">
-                        <Link
-                          href={`/funcionalidades/${row.featureId}`}
-                          className="font-medium text-[var(--brand)] hover:underline"
-                        >
-                          {row.featureName}
-                        </Link>
-                      </td>
-                      <td className="px-4 py-3 text-[var(--muted-foreground)]">
-                        {row.userNeedName}
-                      </td>
-                      <td className="px-4 py-3">{row.channelName}</td>
-                      <td className="px-4 py-3">
-                        <StatusBadge status={row.status} />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {journeyRows.length === 0 ? (
-                <p className="p-4 text-sm text-[var(--muted-foreground)]">
-                  Nenhuma funcionalidade encontrada.
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm text-[var(--muted-foreground)]">
+                  Funcionalidades da etapa {journey?.name ?? ""}
                 </p>
-              ) : null}
+                {canEdit ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="gap-1.5"
+                    disabled={!journey}
+                    onClick={() => {
+                      setAddFeatureInitial({
+                        audienceIds: audienceId ? [audienceId] : [],
+                        momentId: journey?.momentId,
+                        journeyId: journey?.catalogJourneyId ?? "jrn-consorcio",
+                        lockNeed: false,
+                      });
+                      setAddFeatureOpen(true);
+                    }}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Adicionar funcionalidade
+                  </Button>
+                ) : null}
+              </div>
+              <div className="overflow-x-auto rounded-xl border border-[var(--border)]">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="bg-slate-50 text-xs tracking-wide text-[var(--muted-foreground)] uppercase">
+                    <tr>
+                      <th className="px-4 py-3">Funcionalidade</th>
+                      <th className="px-4 py-3">Necessidade</th>
+                      <th className="px-4 py-3">Canais</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {groupedFeatures.map((feature) => (
+                      <tr
+                        key={feature.featureId}
+                        className="border-t border-[var(--border)] align-top"
+                      >
+                        <td className="px-4 py-3">
+                          <Link
+                            href={`/funcionalidades/${feature.featureId}`}
+                            className="font-medium text-[var(--brand)] hover:underline"
+                          >
+                            {feature.featureName}
+                          </Link>
+                          {feature.channels.length > 1 ? (
+                            <p className="mt-0.5 text-[11px] text-slate-500">
+                              {feature.channels.length} canais
+                            </p>
+                          ) : null}
+                        </td>
+                        <td className="px-4 py-3 text-[var(--muted-foreground)]">
+                          {feature.needs.join(" · ") || "—"}
+                        </td>
+                        <td className="px-4 py-3">
+                          <ul className="space-y-2">
+                            {feature.channels.map((ch) => (
+                              <li
+                                key={ch.channelId}
+                                className="flex flex-wrap items-center gap-2"
+                              >
+                                <span className="text-sm text-slate-800">
+                                  {ch.channelName}
+                                </span>
+                                <StageBadge stage={ch.phase} />
+                                <StatusBadge status={ch.status} />
+                              </li>
+                            ))}
+                          </ul>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {groupedFeatures.length === 0 ? (
+                  <p className="p-4 text-sm text-[var(--muted-foreground)]">
+                    Nenhuma funcionalidade encontrada.
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+
+          {tab === "products" ? (
+            <div className="space-y-3">
+              <p className="text-sm text-[var(--muted-foreground)]">
+                Produtos com aplicabilidade na etapa {journey?.name ?? ""}
+              </p>
+              {productsInJourney.length === 0 ? (
+                <p className="rounded-xl border border-dashed border-[var(--border)] px-4 py-8 text-center text-sm text-[var(--muted-foreground)]">
+                  Nenhum produto encontrado nesta etapa com o filtro atual.
+                </p>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {productsInJourney.map((p) => (
+                    <div
+                      key={p.id}
+                      className="rounded-xl border border-[var(--border)] bg-white p-4"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-900">
+                            {p.name}
+                          </p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            {p.featureCount} funcionalidade
+                            {p.featureCount === 1 ? "" : "s"}
+                            {" · "}
+                            {p.needCount} necessidade
+                            {p.needCount === 1 ? "" : "s"}
+                            {" · "}
+                            {p.channelCount} canal
+                            {p.channelCount === 1 ? "" : "is"}
+                          </p>
+                        </div>
+                        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 ring-1 ring-emerald-100">
+                          {formatPercent(p.percentage)}
+                        </span>
+                      </div>
+                      <div className="mt-3">
+                        <div className="mb-1 flex items-center justify-between text-[11px] text-slate-500">
+                          <span>Cobertura de implementações</span>
+                          <span className="tabular-nums">
+                            {p.available}/{p.total}
+                          </span>
+                        </div>
+                        <ProgressBar value={p.percentage} />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setProduct(p.id);
+                          setTab("features");
+                        }}
+                        className="mt-3 text-xs font-medium text-[var(--brand)] hover:underline"
+                      >
+                        Mostrar funcionalidades →
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           ) : null}
 
@@ -1218,7 +1429,7 @@ export function JornadasClient({
             <div className="divide-y divide-[var(--border)] rounded-xl border border-[var(--border)]">
               {journeyGaps.length === 0 ? (
                 <p className="p-4 text-sm text-[var(--muted-foreground)]">
-                  Nenhum gap associado a esta jornada.
+                  Nenhuma {CONCEPT_LABEL.issue.toLowerCase()} associada a esta jornada.
                 </p>
               ) : (
                 journeyGaps.map((gap) => (
@@ -1241,27 +1452,6 @@ export function JornadasClient({
               )}
             </div>
           ) : null}
-
-          {tab === "evidences" ? (
-            <div className="divide-y divide-[var(--border)] rounded-xl border border-[var(--border)]">
-              {journeyEvidences.length === 0 ? (
-                <p className="p-4 text-sm text-[var(--muted-foreground)]">
-                  Nenhuma evidência vinculada às funcionalidades desta jornada.
-                </p>
-              ) : (
-                journeyEvidences.map((ev) => (
-                  <div key={ev.id} className="px-4 py-3">
-                    <p className="text-sm font-medium text-slate-900">
-                      {ev.title}
-                    </p>
-                    <p className="mt-1 text-xs text-[var(--muted-foreground)]">
-                      {ev.type} · {ev.date}
-                    </p>
-                  </div>
-                ))
-              )}
-            </div>
-          ) : null}
         </div>
       </SurfaceCard>
       ) : null}
@@ -1276,6 +1466,7 @@ function KpiTile({
   hint,
   tone,
   bar,
+  onClick,
 }: {
   icon: LucideIcon;
   value: number;
@@ -1283,6 +1474,7 @@ function KpiTile({
   hint: string;
   tone: "brand" | "slate" | "success" | "warning" | "danger";
   bar?: number;
+  onClick?: () => void;
 }) {
   const tones = {
     brand: {
@@ -1307,8 +1499,8 @@ function KpiTile({
     },
   }[tone];
 
-  return (
-    <SurfaceCard className="p-4">
+  const content = (
+    <>
       <div className="flex items-start justify-between gap-2">
         <div>
           <p className="text-2xl font-bold text-slate-900 tabular-nums">
@@ -1333,6 +1525,20 @@ function KpiTile({
           barClassName={tones.bar}
         />
       ) : null}
-    </SurfaceCard>
+    </>
   );
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className="rounded-xl border border-[var(--border)] bg-white p-4 text-left transition hover:border-[var(--brand)]/40 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)]/30"
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return <SurfaceCard className="p-4">{content}</SurfaceCard>;
 }

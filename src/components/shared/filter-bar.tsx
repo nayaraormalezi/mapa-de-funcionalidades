@@ -1,13 +1,18 @@
 "use client";
 
+/**
+ * @deprecated Fase 14 — FilterBar não é consumida pelo Mapa atual
+ * (`mapa-client` usa filtros inline). Mantida para referência; preferir
+ * healthSignals em vez de experiences.
+ */
 import { Button } from "@/components/ui/button";
 import {
   featureStageOptions,
   featureStatusOptions,
-  experienceLabel,
   priorityLabel,
   temporalStatusLabel,
 } from "@/lib/labels";
+import { SIGNAL_LABEL } from "@/lib/health";
 import { countActiveFilters } from "@/lib/filters";
 import { cn } from "@/lib/utils";
 import type { MapFilters } from "@/types";
@@ -149,12 +154,12 @@ export function FilterBar({
           onToggle={(v) => onToggle("phases", v)}
         />
         <MultiSelectChips
-          label="Experiência"
-          options={(Object.keys(experienceLabel) as Array<keyof typeof experienceLabel>).map(
-            (key) => ({ value: key, label: experienceLabel[key] }),
+          label="Health"
+          options={(Object.keys(SIGNAL_LABEL) as Array<keyof typeof SIGNAL_LABEL>).map(
+            (key) => ({ value: key, label: SIGNAL_LABEL[key] }),
           )}
-          selected={filters.experiences}
-          onToggle={(v) => onToggle("experiences", v)}
+          selected={filters.healthSignals}
+          onToggle={(v) => onToggle("healthSignals", v)}
         />
         <MultiSelectChips
           label="Produto"

@@ -1,9 +1,12 @@
 import { GapCard } from "@/components/gaps/gap-card";
 import { EvidenceList } from "@/components/feature/evidence-list";
-import { RoadmapTimeline } from "@/components/feature/roadmap-timeline";
+import {
+  RoadmapTimeline,
+  type ImplementationTimelineItem,
+} from "@/components/feature/roadmap-timeline";
 import { AudienceBadge } from "@/components/badges/audience-badge";
 import { ChannelBadge } from "@/components/badges/channel-badge";
-import { ExperienceBadge } from "@/components/badges/experience-badge";
+import { HealthBadge } from "@/components/badges/health-badge";
 import { MomentBadge } from "@/components/badges/moment-badge";
 import { PriorityBadge } from "@/components/badges/priority-badge";
 import { StatusBadge } from "@/components/badges/status-badge";
@@ -14,6 +17,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { CONCEPT_LABEL } from "@/lib/labels";
 import { formatDate } from "@/lib/utils";
 import type {
   Evidence,
@@ -21,7 +25,6 @@ import type {
   FeatureMapRow,
   Gap,
   Journey,
-  RoadmapItem,
   UserNeed,
   Capability,
 } from "@/types";
@@ -42,7 +45,8 @@ export function FeatureDetail({
   };
   contexts: FeatureMapRow[];
   evidences: Evidence[];
-  roadmap: RoadmapItem[];
+  /** Timeline derivada de Implementations (não RoadmapItem). */
+  roadmap: ImplementationTimelineItem[];
   gaps: Gap[];
 }) {
   return (
@@ -141,7 +145,10 @@ export function FeatureDetail({
                     <StatusBadge status={ctx.status} />
                   </td>
                   <td className="px-3 py-3">
-                    <ExperienceBadge experience={ctx.experience} />
+                    <HealthBadge
+                      score={ctx.healthScore}
+                      signal={ctx.healthSignal}
+                    />
                   </td>
                   <td className="px-3 py-3 text-xs">
                     {formatDate(ctx.expectedDate)}
@@ -156,7 +163,7 @@ export function FeatureDetail({
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Roadmap</CardTitle>
+            <CardTitle>Entregas</CardTitle>
           </CardHeader>
           <CardContent>
             <RoadmapTimeline items={roadmap} />
@@ -174,11 +181,11 @@ export function FeatureDetail({
 
       <section className="space-y-3">
         <h2 className="font-[family-name:var(--font-display)] text-lg font-semibold">
-          Gaps relacionados
+          {CONCEPT_LABEL.issues} relacionadas
         </h2>
         {gaps.length === 0 ? (
           <p className="text-sm text-[var(--muted-foreground)]">
-            Nenhum gap associado a esta funcionalidade.
+            Nenhuma {CONCEPT_LABEL.issue.toLowerCase()} associada a esta funcionalidade.
           </p>
         ) : (
           <div className="grid gap-3 md:grid-cols-2">

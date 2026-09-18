@@ -7,6 +7,7 @@ import {
   duplicateFeature,
   type ActionResult,
 } from "@/app/actions/crud";
+import { useAuth } from "@/components/auth/auth-provider";
 import { Button } from "@/components/ui/button";
 
 export function ArchiveButton({
@@ -18,8 +19,11 @@ export function ArchiveButton({
   id: string;
   label?: string;
 }) {
+  const { canEdit } = useAuth();
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+
+  if (!canEdit) return null;
 
   return (
     <Button
@@ -41,8 +45,11 @@ export function ArchiveButton({
 }
 
 export function DuplicateFeatureButton({ featureId }: { featureId: string }) {
+  const { canEdit } = useAuth();
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+
+  if (!canEdit) return null;
 
   return (
     <Button
@@ -55,7 +62,8 @@ export function DuplicateFeatureButton({ featureId }: { featureId: string }) {
           const result = await duplicateFeature(featureId);
           if (result.ok) {
             router.refresh();
-            if (result.id) router.push(`/cadastros/funcionalidades?edit=${result.id}`);
+            if (result.id)
+              router.push(`/cadastros/funcionalidades?edit=${result.id}`);
           } else {
             alert(result.message);
           }

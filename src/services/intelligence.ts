@@ -1,29 +1,47 @@
 import {
+  CONCEPT_LABEL,
   DEVELOPMENT_STAGES,
   PLANNED_STAGES,
-  experienceLabel,
   featureStatusLabel,
   gapTypeLabel,
+  normalizeInsightSeverity,
+  type InsightSeverityCode,
 } from "@/lib/labels";
+import type { HealthBucket } from "@/lib/health";
 import {
   buildFeatureMapRows,
   getAudiences,
   getMoments,
 } from "@/services/channels";
 import { getDatabase } from "@/services/db";
-import { getOpenGaps } from "@/services/gaps";
+import { getOpenIssues } from "@/services/gaps";
 import { getTransformationSummaries } from "@/services/transformation";
 import type {
-  ExperienceLevel,
   FeatureMapRow,
   FeatureStatus,
-  Gap,
   GapType,
+  Issue,
   TransformationSummary,
 } from "@/types";
 
-export type InsightSeverity = "critical" | "warning" | "opportunity" | "info";
+/** Severidade de Insight — `watch` (legado: `opportunity`). */
+export type InsightSeverity = InsightSeverityCode;
 
+/** Origem do insight (quando conhecida). */
+export type InsightOrigin =
+  | "COVERAGE"
+  | "EXPERIENCE"
+  | "COMPARISON"
+  | "TRANSFORMATION"
+  | "ROADMAP"
+  | "MELHORIAS"
+  | "EVALUATION";
+
+/**
+ * Insight = resultado derivado da inteligência.
+ * NÃO é entidade de cadastro; NÃO é sinônimo de Problema/Oportunidade.
+ * Conversão para Melhoria deve ser ação explícita do usuário.
+ */
 export interface IntelligenceInsight {
   id: string;
   severity: InsightSeverity;
@@ -31,6 +49,24 @@ export interface IntelligenceInsight {
   description: string;
   href?: string;
   metric?: string;
+  origin?: InsightOrigin;
+  actionLabel?: string;
+  context?: string;
+}
+
+/** Filtra insights por origem (camada transversal). */
+export function filterInsightsByOrigin(
+  insights: IntelligenceInsight[],
+  origin: InsightOrigin,
+): IntelligenceInsight[] {
+  return insights.filter((i) => i.origin === origin);
+}
+
+/** Garante compatibilidade se algum consumidor ainda enviar o valor legado. */
+export function coerceInsightSeverity(
+  value: string | null | undefined,
+): InsightSeverity {
+  return normalizeInsightSeverity(value);
 }
 
 export interface CoverageCell {
@@ -47,20 +83,25 @@ export interface CoverageCell {
   coveragePercent: number;
 }
 
+/** Distribuição de Health canônico (Evaluation → Intelligence). */
 export interface ExperienceHealth {
-  level: ExperienceLevel;
+  level: HealthBucket;
   count: number;
   percentage: number;
 }
 
+/** Inteligência sobre Issues abertas (catálogo persistido — ≠ Coverage Gap). */
 export interface GapIntelligence {
   totalOpen: number;
   byType: { type: GapType; label: string; count: number }[];
   byImpact: { impact: string; count: number }[];
-  transitionGaps: Gap[];
-  criticalGaps: Gap[];
+  transitionGaps: Issue[];
+  criticalGaps: Issue[];
   withoutActionPlan: number;
 }
+
+/** Alias canônico. */
+export type IssueIntelligence = GapIntelligence;
 
 export interface MigrationIntelligence {
   summaries: TransformationSummary[];
@@ -104,22 +145,20 @@ export async function getCoverageMatrix(): Promise<CoverageCell[]> {
       const scoped = rows.filter(
         (r) => r.audienceId === audience.id && r.momentId === moment.id,
       );
-      const total = uniqueFeatureIds(scoped).size;
-      const available = uniqueFeatureIds(
-        scoped.filter((r) => r.phase === "AVAILABLE"),
-      ).size;
-      const planned = uniqueFeatureIds(
-        scoped.filter((r) => PLANNED_STAGES.includes(r.phase)),
-      ).size;
-      const inDevelopment = uniqueFeatureIds(
-        scoped.filter((r) => DEVELOPMENT_STAGES.includes(r.phase)),
-      ).size;
-      const problems = uniqueFeatureIds(
-        scoped.filter((r) => (r.experience === "NEEDS_IMPROVEMENT" || r.experience === "CRITICAL")),
-      ).size;
-      const notAvailable = uniqueFeatureIds(
-        scoped.filter((r) => r.phase === "REMOVED"),
-      ).size;
+      const total = scoped.length;
+      const available = scoped.filter((r) => r.phase === "AVAILABLE").length;
+      const planned = scoped.filter((r) =>
+        PLANNED_STAGES.includes(r.phase),
+      ).length;
+      const inDevelopment = scoped.filter((r) =>
+        DEVELOPMENT_STAGES.includes(r.phase),
+      ).length;
+      const problems = scoped.filter(
+        (r) =>
+          r.healthScore != null &&
+          (r.healthSignal === "ATTENTION" || r.healthSignal === "CRITICAL"),
+      ).length;
+      const notAvailable = scoped.filter((r) => r.phase === "REMOVED").length;
 
       cells.push({
         audienceId: audience.id,
@@ -140,33 +179,52 @@ export async function getCoverageMatrix(): Promise<CoverageCell[]> {
   return cells;
 }
 
+/**
+ * Distribuição de Health no mapa (nome legado `getExperienceHealth`).
+ * @deprecated Fase 14 — preferir nome alinhado a Health quando houver rename
+ * seguro dos consumidores (insights/relatórios). Fonte: Evaluation → healthSignal.
+ */
 export async function getExperienceHealth(): Promise<ExperienceHealth[]> {
+  /**
+   * Fase 11: distribuição a partir de Health canônico (Evaluations),
+   * não mais do campo legado ExperienceLevel.
+   * NOT_EVALUATED = sem score — nunca conta como CRITICAL/0.
+   */
   const rows = await buildFeatureMapRows();
-  const evaluated = rows.filter((r) => r.experience !== "NOT_EVALUATED");
-  const total = evaluated.length || 1;
-  const levels: ExperienceLevel[] = [
+  const buckets: Array<ExperienceHealth["level"]> = [
     "GOOD",
-    "ADEQUATE",
-    "NEEDS_IMPROVEMENT",
+    "ATTENTION",
     "CRITICAL",
     "NOT_EVALUATED",
   ];
 
-  return levels.map((level) => {
-    const count = rows.filter((r) => r.experience === level).length;
+  const classified = rows.map((r) => {
+    if (r.healthScore == null || r.healthSignal === "UNKNOWN") {
+      return "NOT_EVALUATED" as const;
+    }
+    if (r.healthSignal === "GOOD") return "GOOD" as const;
+    if (r.healthSignal === "ATTENTION") return "ATTENTION" as const;
+    return "CRITICAL" as const;
+  });
+
+  const evaluated = classified.filter((l) => l !== "NOT_EVALUATED");
+  const totalEvaluated = evaluated.length || 1;
+
+  return buckets.map((level) => {
+    const count = classified.filter((l) => l === level).length;
     return {
       level,
       count,
       percentage:
         level === "NOT_EVALUATED"
           ? (count / Math.max(rows.length, 1)) * 100
-          : (count / total) * 100,
+          : (count / totalEvaluated) * 100,
     };
   });
 }
 
 export async function getGapIntelligence(): Promise<GapIntelligence> {
-  const gaps = await getOpenGaps();
+  const gaps = await getOpenIssues();
   const types = Object.keys(gapTypeLabel) as GapType[];
 
   const byType = types
@@ -307,18 +365,23 @@ export async function getIntelligenceInsights(): Promise<IntelligenceInsight[]> 
   ]);
 
   const insights: IntelligenceInsight[] = [];
-  const problems = rows.filter((r) => (r.experience === "NEEDS_IMPROVEMENT" || r.experience === "CRITICAL"));
+  const problems = rows.filter(
+    (r) =>
+      r.healthScore != null &&
+      (r.healthSignal === "ATTENTION" || r.healthSignal === "CRITICAL"),
+  );
   const criticalExp = experience.find((e) => e.level === "CRITICAL");
 
   if (gapIntel.criticalGaps.length > 0) {
     insights.push({
       id: "critical-gaps",
       severity: "critical",
-      title: `${gapIntel.criticalGaps.length} gap(s) críticos abertos`,
-      description:
-        "Existem gaps com impacto/prioridade crítica que exigem plano de ação imediato.",
-      href: "/gaps",
+      title: `${gapIntel.criticalGaps.length} ${CONCEPT_LABEL.problema.toLowerCase()}(s) crítica(s) no catálogo`,
+      description: `Há ${CONCEPT_LABEL.problemas.toLowerCase()} cadastrados com impacto/prioridade crítica. Registro gerenciável em Melhorias — este insight apenas sinaliza.`,
+      href: "/gaps?tab=issues",
       metric: String(gapIntel.criticalGaps.length),
+      origin: "MELHORIAS",
+      actionLabel: `Mostrar ${CONCEPT_LABEL.problemas.toLowerCase()}`,
     });
   }
 
@@ -326,11 +389,13 @@ export async function getIntelligenceInsights(): Promise<IntelligenceInsight[]> 
     insights.push({
       id: "undefined-future",
       severity: "warning",
-      title: `${migration.totalUndefined} funcionalidade(s) sem destino no futuro`,
+      title: `${migration.totalUndefined} funcionalidade(s) sem destino futuro`,
       description:
         "Há cobertura no canal atual sem definição no canal futuro — risco de transição.",
-      href: "/transformacao",
+      href: "/inteligencia/transformacoes",
       metric: String(migration.totalUndefined),
+      origin: "TRANSFORMATION",
+      actionLabel: "Mostrar transformação",
     });
   }
 
@@ -338,11 +403,13 @@ export async function getIntelligenceInsights(): Promise<IntelligenceInsight[]> 
     insights.push({
       id: "problem-status",
       severity: "critical",
-      title: `${uniqueFeatureIds(problems).size} funcionalidade(s) com problema`,
+      title: `${uniqueFeatureIds(problems).size} funcionalidade(s) com saúde em atenção/crítica`,
       description:
-        "Experiência crítica/precisa melhorar indica fricção mesmo com funcionalidade disponível.",
-      href: "/mapa",
+        "Health derivado de Evaluation abaixo do esperado (canais sem avaliação não entram nesta contagem).",
+      href: "/relatorios",
       metric: String(uniqueFeatureIds(problems).size),
+      origin: "EXPERIENCE",
+      actionLabel: "Mostrar relatório de experiência",
     });
   }
 
@@ -350,10 +417,13 @@ export async function getIntelligenceInsights(): Promise<IntelligenceInsight[]> 
     insights.push({
       id: "critical-experience",
       severity: "warning",
-      title: `${criticalExp.count} contexto(s) com experiência crítica`,
-      description: `${experienceLabel.CRITICAL}: usuários encontram fricção severa mesmo com a feature disponível.`,
-      href: "/mapa",
+      title: `${criticalExp.count} implementação(ões) com saúde crítica`,
+      description:
+        "Score de Health crítico a partir de avaliações — ausência de Evaluation não gera este sinal.",
+      href: "/relatorios",
       metric: String(criticalExp.count),
+      origin: "EXPERIENCE",
+      actionLabel: "Mostrar relatório",
     });
   }
 
@@ -361,12 +431,14 @@ export async function getIntelligenceInsights(): Promise<IntelligenceInsight[]> 
   if (missingFuture.length > 0) {
     insights.push({
       id: "parity-future",
-      severity: "opportunity",
-      title: `${missingFuture.length} oportunidade(s) de paridade futuro`,
+      severity: "watch",
+      title: `${missingFuture.length} sinal(is) de paridade futuro`,
       description:
         "Funcionalidades atuais ainda não mapeadas com status no canal futuro.",
-      href: "/inteligencia",
+      href: "/inteligencia/transformacoes",
       metric: String(missingFuture.length),
+      origin: "TRANSFORMATION",
+      actionLabel: "Mostrar transformação",
     });
   }
 
@@ -378,20 +450,24 @@ export async function getIntelligenceInsights(): Promise<IntelligenceInsight[]> 
       title: `${inconsistent.length} inconsistência(s) entre canais atuais`,
       description:
         "A mesma funcionalidade tem status diferentes entre canais do mesmo público/momento.",
-      href: "/comparacao",
+      href: "/inteligencia/comparacoes",
       metric: String(inconsistent.length),
+      origin: "COMPARISON",
+      actionLabel: "Abrir comparações",
     });
   }
 
   if (gapIntel.transitionGaps.length > 0) {
     insights.push({
       id: "transition-gaps",
-      severity: "opportunity",
-      title: `${gapIntel.transitionGaps.length} gap(s) de transição`,
+      severity: "watch",
+      title: `${gapIntel.transitionGaps.length} ${CONCEPT_LABEL.problema.toLowerCase()}(s) de transição`,
       description:
-        "Priorize estes itens no roadmap de migração Atual → Futuro.",
-      href: "/transformacao",
+        "Itens de transição no catálogo de Melhorias — priorize no plano Atual → Futuro.",
+      href: "/gaps?tab=issues",
       metric: String(gapIntel.transitionGaps.length),
+      origin: "MELHORIAS",
+      actionLabel: `Mostrar ${CONCEPT_LABEL.problemas.toLowerCase()}`,
     });
   }
 
@@ -403,13 +479,19 @@ export async function getIntelligenceInsights(): Promise<IntelligenceInsight[]> 
       id: "planned-pipeline",
       severity: "info",
       title: `${planned} funcionalidade(s) planejadas no pipeline`,
-      description: "Itens com status Planejado prontos para priorização de discovery/UX.",
-      href: "/mapa",
+      description:
+        "Itens com fase planejada prontos para priorização de discovery/UX.",
+      href: "/roadmap",
       metric: String(planned),
+      origin: "ROADMAP",
+      actionLabel: "Mostrar gestão de entregas",
     });
   }
 
-  return insights;
+  return insights.map((insight) => ({
+    ...insight,
+    severity: coerceInsightSeverity(insight.severity),
+  }));
 }
 
 export async function getChannelCoverageDetail() {
@@ -420,10 +502,8 @@ export async function getChannelCoverageDetail() {
     .filter((c) => c.active)
     .map((channel) => {
       const scoped = rows.filter((r) => r.channelId === channel.id);
-      const total = uniqueFeatureIds(scoped).size;
-      const available = uniqueFeatureIds(
-        scoped.filter((r) => r.phase === "AVAILABLE"),
-      ).size;
+      const total = scoped.length;
+      const available = scoped.filter((r) => r.phase === "AVAILABLE").length;
       const future = scoped.some((r) => r.temporalStatus === "FUTURE");
       const current = scoped.some((r) => r.temporalStatus === "CURRENT");
 
@@ -473,7 +553,8 @@ export async function getAdvancedComparison(channelAId: string, channelBId: stri
   const onlyAIds = [...mapA.keys()].filter((id) => !mapB.has(id));
   const onlyBIds = [...mapB.keys()].filter((id) => !mapA.has(id));
 
-  const experienceDiffs = commonIds
+  /** Diferenças de Health canônico (Evaluation) + status de prazo — não ExperienceLevel. */
+  const healthDiffs = commonIds
     .map((id) => {
       const a = mapA.get(id)!;
       const b = mapB.get(id)!;
@@ -482,13 +563,16 @@ export async function getAdvancedComparison(channelAId: string, channelBId: stri
         featureName: a.featureName,
         statusA: a.status,
         statusB: b.status,
-        experienceA: a.experience,
-        experienceB: b.experience,
+        healthScoreA: a.healthScore,
+        healthScoreB: b.healthScore,
+        healthSignalA: a.healthSignal,
+        healthSignalB: b.healthSignal,
         differentStatus: a.status !== b.status,
-        differentExperience: a.experience !== b.experience,
+        differentHealth:
+          a.healthScore !== b.healthScore || a.healthSignal !== b.healthSignal,
       };
     })
-    .filter((d) => d.differentStatus || d.differentExperience);
+    .filter((d) => d.differentStatus || d.differentHealth);
 
   return {
     channelAId,
@@ -500,7 +584,18 @@ export async function getAdvancedComparison(channelAId: string, channelBId: stri
       (commonIds.length /
         Math.max(commonIds.length + onlyAIds.length + onlyBIds.length, 1)) *
       100,
-    experienceDiffs,
+    healthDiffs,
+    /** @deprecated Fase 13 — preferir healthDiffs */
+    experienceDiffs: healthDiffs.map((d) => ({
+      featureId: d.featureId,
+      featureName: d.featureName,
+      statusA: d.statusA,
+      statusB: d.statusB,
+      experienceA: mapA.get(d.featureId)!.experience,
+      experienceB: mapB.get(d.featureId)!.experience,
+      differentStatus: d.differentStatus,
+      differentExperience: d.differentHealth,
+    })),
     common: commonIds.map((id) => mapA.get(id)!),
     onlyA: onlyAIds.map((id) => mapA.get(id)!),
     onlyB: onlyBIds.map((id) => mapB.get(id)!),

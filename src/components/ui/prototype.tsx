@@ -1,6 +1,57 @@
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 import type { LucideIcon } from "lucide-react";
 import { X } from "lucide-react";
+
+/** Item de breadcrumb. Sem `href` = página atual (não clicável). */
+export type BreadcrumbItem = {
+  label: string;
+  href?: string;
+};
+
+/** Trilha navegável padronizada (›). */
+export function PageBreadcrumb({
+  items,
+  className,
+}: {
+  items: BreadcrumbItem[];
+  className?: string;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <nav aria-label="Breadcrumb" className={cn(className)}>
+      <ol className="flex flex-wrap items-center gap-x-1.5 text-xs font-medium text-[var(--muted-foreground)]">
+        {items.map((item, index) => {
+          const isLast = index === items.length - 1;
+          return (
+            <li key={`${item.label}-${index}`} className="flex items-center gap-x-1.5">
+              {index > 0 ? (
+                <span aria-hidden className="text-[var(--muted-foreground)]/60">
+                  ›
+                </span>
+              ) : null}
+              {item.href && !isLast ? (
+                <Link
+                  href={item.href}
+                  className="hover:text-[var(--brand)] hover:underline"
+                >
+                  {item.label}
+                </Link>
+              ) : (
+                <span
+                  className={isLast ? "text-slate-600" : undefined}
+                  aria-current={isLast ? "page" : undefined}
+                >
+                  {item.label}
+                </span>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </nav>
+  );
+}
 
 export function PageHeader({
   breadcrumb,
@@ -10,7 +61,8 @@ export function PageHeader({
   leading,
   actions,
 }: {
-  breadcrumb?: string;
+  /** Trilha funcional. String legada ainda aceita (sem links). */
+  breadcrumb?: string | BreadcrumbItem[];
   title: string;
   description?: string;
   callout?: { title: string; body: string; icon?: LucideIcon };
@@ -19,16 +71,18 @@ export function PageHeader({
   actions?: React.ReactNode;
 }) {
   const CalloutIcon = callout?.icon;
+  const crumbs: BreadcrumbItem[] | null = !breadcrumb
+    ? null
+    : typeof breadcrumb === "string"
+      ? [{ label: breadcrumb }]
+      : breadcrumb;
+
   return (
     <div className="mb-5 space-y-4">
       {leading ? (
         <div className="flex flex-wrap items-center gap-3">{leading}</div>
       ) : null}
-      {breadcrumb ? (
-        <p className="text-xs font-medium text-[var(--muted-foreground)]">
-          {breadcrumb}
-        </p>
-      ) : null}
+      {crumbs ? <PageBreadcrumb items={crumbs} /> : null}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <h1 className="min-w-0 flex-1 text-2xl font-semibold tracking-tight text-[#111827] md:text-[28px]">
           {title}

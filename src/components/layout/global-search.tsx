@@ -3,12 +3,12 @@
 import { useDeferredValue, useEffect, useId, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { BookOpen, Radio, Route, Search } from "lucide-react";
+import { AlertTriangle, BookOpen, Layers, Radio, Route, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type GlobalSearchItem = {
   id: string;
-  type: "feature" | "journey" | "channel";
+  type: "feature" | "journey" | "channel" | "product" | "issue";
   label: string;
   subtitle?: string;
   href: string;
@@ -21,6 +21,9 @@ const TYPE_META: Record<
   feature: { label: "Funcionalidade", icon: BookOpen },
   journey: { label: "Jornada", icon: Route },
   channel: { label: "Canal", icon: Radio },
+  product: { label: "Produto", icon: Layers },
+  /** Issue (Gap₂) — nunca rotular como "Gap" (≠ Coverage Gap). */
+  issue: { label: "Problema", icon: AlertTriangle },
 };
 
 function normalize(value: string) {
@@ -115,7 +118,7 @@ export function GlobalSearchBar({ items }: { items: GlobalSearchItem[] }) {
             setOpen(false);
           }
         }}
-        placeholder="Buscar funcionalidades, jornadas, canais..."
+        placeholder="Buscar funcionalidades, jornadas, canais, produtos, problemas..."
         className="h-10 w-full rounded-full border border-[var(--border)] bg-[#f5f5f5] pr-4 pl-10 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:ring-2 focus:ring-[var(--brand-ring)]"
         role="combobox"
         aria-expanded={showPanel}

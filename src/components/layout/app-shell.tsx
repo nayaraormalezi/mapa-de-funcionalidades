@@ -8,7 +8,6 @@ import {
   BookOpen,
   ChevronsLeft,
   ChevronsRight,
-  Clock3,
   GitBranch,
   Home,
   Layers,
@@ -52,12 +51,12 @@ const navSections = (gapsBadgeCount: number): NavSection[] => [
     label: "Principal",
     items: [
       { href: "/dashboard", label: "Visão geral", icon: Home },
-      { href: "/mapa", label: "Mapa de funcionalidades", icon: BookOpen },
+      { href: "/mapa", label: "Funcionalidades", icon: BookOpen },
       { href: "/jornadas", label: "Jornadas", icon: Route },
-      { href: "/roadmap", label: "Roadmap", icon: GitBranch },
+      { href: "/roadmap", label: "Gestão de entregas", icon: GitBranch },
       {
         href: "/gaps",
-        label: "Gaps & oportunidades",
+        label: "Melhorias",
         icon: Lightbulb,
         badge:
           gapsBadgeCount > 0
@@ -71,12 +70,7 @@ const navSections = (gapsBadgeCount: number): NavSection[] => [
     label: "Ecossistema",
     items: [
       { href: "/canais", label: "Canais", icon: Radio },
-      {
-        href: "/produtos",
-        label: "Produtos",
-        icon: Layers,
-        badge: { type: "new" },
-      },
+      { href: "/produtos", label: "Produtos", icon: Layers },
     ],
   },
   {
@@ -86,9 +80,8 @@ const navSections = (gapsBadgeCount: number): NavSection[] => [
       { href: "/relatorios", label: "Relatórios", icon: BarChart3 },
       {
         href: "/inteligencia",
-        label: "Insights",
-        icon: Clock3,
-        badge: { type: "new" },
+        label: "Inteligência",
+        icon: Lightbulb,
       },
     ],
   },
@@ -98,12 +91,6 @@ const navSections = (gapsBadgeCount: number): NavSection[] => [
     items: [{ href: "/configuracoes", label: "Configurações", icon: Settings }],
   },
 ];
-
-const roleLabel: Record<string, string> = {
-  admin: "Admin",
-  editor: "Editor",
-  viewer: "Viewer",
-};
 
 function initials(name: string | null | undefined) {
   if (!name) return "UX";
@@ -193,10 +180,12 @@ export function AppShell({
   children,
   gapsBadgeCount = 0,
   searchItems = [],
+  dataMode = "DEMO",
 }: {
   children: React.ReactNode;
   gapsBadgeCount?: number;
   searchItems?: GlobalSearchItem[];
+  dataMode?: "LIVE" | "DEMO";
 }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -212,13 +201,6 @@ export function AppShell({
     () => auth.profile?.fullName?.trim() || auth.email || "Usuário",
     [auth.profile?.fullName, auth.email],
   );
-
-  const shortName = useMemo(() => {
-    const role = roleLabel[auth.role] ?? auth.role;
-    if (auth.role === "admin") return "Admin";
-    const first = displayName.split(/\s+/)[0];
-    return first || role;
-  }, [auth.role, displayName]);
 
   if (pathname === "/login" || pathname.startsWith("/auth/")) {
     return <>{children}</>;
@@ -295,71 +277,6 @@ export function AppShell({
             </div>
           ))}
         </nav>
-
-        <div className="relative border-t border-white/10 p-2.5">
-          <button
-            type="button"
-            onClick={() => setProfileOpen((v) => !v)}
-            className={cn(
-              "flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left transition-colors hover:bg-white/8",
-              collapsed && "justify-center px-0",
-            )}
-          >
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#4a8fc4] text-xs font-semibold text-white">
-              {initials(displayName)}
-            </div>
-            {!collapsed ? (
-              <>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-white">
-                    {shortName}
-                  </p>
-                  <p className="truncate text-[11px] text-white/55">
-                    CAIXA Consórcio
-                  </p>
-                </div>
-                <ChevronDown
-                  className={cn(
-                    "h-4 w-4 shrink-0 text-white/60 transition-transform",
-                    profileOpen && "rotate-180",
-                  )}
-                />
-              </>
-            ) : null}
-          </button>
-
-          {profileOpen ? (
-            <div
-              className={cn(
-                "absolute bottom-[calc(100%+6px)] z-10 min-w-[180px] rounded-xl border border-white/10 bg-[#004785] p-1.5 shadow-lg",
-                collapsed ? "left-2" : "right-2.5 left-2.5",
-              )}
-            >
-              <Link
-                href="/configuracoes"
-                onClick={() => {
-                  setProfileOpen(false);
-                  setMobileOpen(false);
-                }}
-                className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-white/85 hover:bg-white/10"
-              >
-                <Settings className="h-3.5 w-3.5" />
-                Configurações
-              </Link>
-              {auth.supabaseEnabled ? (
-                <form action={logoutAction}>
-                  <button
-                    type="submit"
-                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-white/85 hover:bg-white/10"
-                  >
-                    <LogOut className="h-3.5 w-3.5" />
-                    Sair
-                  </button>
-                </form>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
       </aside>
 
       {mobileOpen ? (
@@ -384,7 +301,78 @@ export function AppShell({
             {mobileOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
           </Button>
 
-          <GlobalSearchBar items={searchItems} />
+          <div className="min-w-0 flex-1">
+            <GlobalSearchBar items={searchItems} />
+          </div>
+
+          {dataMode === "DEMO" ? (
+            <span
+              className="shrink-0 rounded-md border border-amber-300/80 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-amber-900 uppercase"
+              title="Os dados exibidos são demonstrativos (demo-data), não vêm do Supabase."
+            >
+              Modo demonstração
+            </span>
+          ) : null}
+
+          <div className="relative shrink-0">
+            <button
+              type="button"
+              onClick={() => setProfileOpen((v) => !v)}
+              aria-expanded={profileOpen}
+              aria-haspopup="menu"
+              className="flex items-center gap-2.5 rounded-lg px-1.5 py-1 text-left transition-colors hover:bg-slate-50"
+            >
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#4a8fc4] text-xs font-semibold text-white">
+                {initials(displayName)}
+              </div>
+              <div className="hidden min-w-0 sm:block">
+                <p className="max-w-[160px] truncate text-sm font-semibold text-slate-900">
+                  {displayName}
+                </p>
+                <p className="truncate text-[11px] text-slate-500">
+                  CAIXA Consórcio
+                </p>
+              </div>
+              <ChevronDown
+                className={cn(
+                  "hidden h-4 w-4 shrink-0 text-slate-400 transition-transform sm:block",
+                  profileOpen && "rotate-180",
+                )}
+              />
+            </button>
+
+            {profileOpen ? (
+              <div
+                role="menu"
+                className="absolute top-[calc(100%+6px)] right-0 z-40 min-w-[180px] rounded-xl border border-[var(--border)] bg-white p-1.5 shadow-[var(--shadow-md)]"
+              >
+                <Link
+                  href="/configuracoes"
+                  role="menuitem"
+                  onClick={() => {
+                    setProfileOpen(false);
+                    setMobileOpen(false);
+                  }}
+                  className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs text-slate-700 hover:bg-slate-50"
+                >
+                  <Settings className="h-3.5 w-3.5" />
+                  Configurações
+                </Link>
+                {auth.supabaseEnabled ? (
+                  <form action={logoutAction}>
+                    <button
+                      type="submit"
+                      role="menuitem"
+                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-slate-700 hover:bg-slate-50"
+                    >
+                      <LogOut className="h-3.5 w-3.5" />
+                      Sair
+                    </button>
+                  </form>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
         </header>
 
         <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto p-5 md:p-6 lg:p-8">

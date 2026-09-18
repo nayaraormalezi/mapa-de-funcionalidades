@@ -280,7 +280,7 @@ function EvolutionCard({
           onClick={onView}
           className="mt-2 text-[11px] font-medium text-[var(--brand)] hover:underline"
         >
-          Ver evolução →
+          Mostrar evolução →
         </button>
       ) : null}
     </li>
@@ -300,6 +300,7 @@ function AddEvolutionForm({
   function handleSubmit(formData: FormData) {
     formData.set("feature_channel_context_id", fccId);
     formData.set("status", "IN_PROGRESS");
+    formData.set("origin", "MANUAL");
     startTransition(async () => {
       const result = await upsertFeatureEvolution(formData);
       if (!result.ok) {

@@ -34,7 +34,8 @@ export async function getDashboardKpis(): Promise<DashboardKpis> {
   const withProblem = uniqueFeatureIds(
     rows.filter(
       (r) =>
-        r.experience === "NEEDS_IMPROVEMENT" || r.experience === "CRITICAL",
+        r.healthScore != null &&
+        (r.healthSignal === "ATTENTION" || r.healthSignal === "CRITICAL"),
     ),
   );
   const gaps = (await getDatabase()).gaps.filter(
@@ -58,15 +59,16 @@ async function coverageFor(
   const rows = await buildFeatureMapRows();
   return items.map((item) => {
     const scoped = rows.filter((r) => predicate(r, item.id));
-    const total = uniqueFeatureIds(scoped).size;
-    const available = uniqueFeatureIds(
-      scoped.filter((r) => r.phase === "AVAILABLE"),
-    ).size;
+    // Cobertura por IMPLEMENTAÇÃO (contexto de canal), não por funcionalidade distinta.
+    const total = scoped.length;
+    const available = scoped.filter((r) => r.phase === "AVAILABLE").length;
+    const featureCount = uniqueFeatureIds(scoped).size;
     return {
       id: item.id,
       name: item.name,
       total,
       available,
+      featureCount,
       percentage: total === 0 ? 0 : (available / total) * 100,
     };
   });

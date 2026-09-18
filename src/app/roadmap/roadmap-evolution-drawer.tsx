@@ -55,6 +55,7 @@ export function RoadmapEvolutionDrawer({
     }
     fd.set("responsible", evo.responsible);
     fd.set("notes", evo.notes);
+    if (evo.origin) fd.set("origin", evo.origin);
 
     startTransition(async () => {
       const result = await upsertFeatureEvolution(fd);

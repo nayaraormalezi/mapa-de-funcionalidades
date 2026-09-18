@@ -1,5 +1,11 @@
 "use client";
 
+/**
+ * UI de Transformation (CURRENT × FUTURE).
+ * Consumida por `/inteligencia/transformacoes`.
+ * Pasta `/transformacao` mantida por compatibilidade — análise, não Evolution.
+ */
+
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -16,6 +22,11 @@ import {
 import { formatPercent } from "@/lib/utils";
 import type { AudienceCode, TransformationSummary } from "@/types";
 import { ArrowDown } from "lucide-react";
+import {
+  InsightsFoundSection,
+  type InsightCardProps,
+} from "@/components/intelligence/insight-card";
+import { IntelligenceNav } from "@/components/intelligence/intelligence-nav";
 
 type MigrationRow = {
   current: {
@@ -47,6 +58,7 @@ export function TransformacaoClient({
   migrations,
   moments,
   audiences,
+  basePath = "/inteligencia/transformacoes",
 }: {
   audienceId: string;
   audienceName: string;
@@ -54,6 +66,7 @@ export function TransformacaoClient({
   migrations: MigrationRow[];
   moments: { id: string; name: string }[];
   audiences: { id: string; name: string; code: AudienceCode }[];
+  basePath?: string;
 }) {
   const router = useRouter();
   const [momentId, setMomentId] = useState("");
@@ -87,21 +100,79 @@ export function TransformacaoClient({
     return ((migrate + create) / denominator) * 100;
   }, [summaries, audienceId]);
 
+  const transformInsights: InsightCardProps[] = useMemo(() => {
+    const scoped = summaries.filter((s) => s.audienceId === audienceId);
+    const undefinedCount = scoped.reduce((a, s) => a + s.undefined.length, 0);
+    const migrate = scoped.reduce((a, s) => a + s.migrate.length, 0);
+    const create = scoped.reduce((a, s) => a + s.create.length, 0);
+    const discontinue = scoped.reduce((a, s) => a + s.discontinue.length, 0);
+    const list: InsightCardProps[] = [];
+    if (undefinedCount > 0) {
+      list.push({
+        title: `${undefinedCount} funcionalidade(s) ainda não possuem destino futuro`,
+        description:
+          "Há implementações no canal atual sem definição no canal futuro.",
+        severity: "warning",
+        origin: "TRANSFORMATION",
+        context: audienceName,
+        actionLabel: "Investigar",
+        metric: String(undefinedCount),
+      });
+    }
+    if (migrate > 0) {
+      list.push({
+        title: `${migrate} funcionalidade(s) a migrar`,
+        description: "Itens com caminho Atual → Futuro identificado.",
+        severity: "info",
+        origin: "TRANSFORMATION",
+        context: audienceName,
+        metric: String(migrate),
+      });
+    }
+    if (create > 0) {
+      list.push({
+        title: `${create} funcionalidade(s) a criar no futuro`,
+        description: "Cobertura futura sem correspondente no canal atual.",
+        severity: "watch",
+        origin: "TRANSFORMATION",
+        context: audienceName,
+        metric: String(create),
+      });
+    }
+    if (discontinue > 0) {
+      list.push({
+        title: `${discontinue} funcionalidade(s) a descontinuar`,
+        description: "Presentes no atual e marcadas para remoção no futuro.",
+        severity: "watch",
+        origin: "TRANSFORMATION",
+        context: audienceName,
+        metric: String(discontinue),
+      });
+    }
+    return list;
+  }, [summaries, audienceId, audienceName]);
+
   return (
     <div className="space-y-5">
       <PageHeader
-        breadcrumb={`Canais › Transformação › ${audienceName}`}
+        breadcrumb={[
+          { label: "Inteligência", href: "/inteligencia" },
+          { label: "Transformações", href: basePath },
+          { label: audienceName },
+        ]}
         title={`Atual → Futuro · ${audienceName}`}
-        description={`Dados exclusivos de ${audienceName}. Prontidão: ${formatPercent(readinessPercent)}.`}
+        description={`Análise de Implementations (CURRENT × FUTURE) para ${audienceName}. Prontidão: ${formatPercent(readinessPercent)}.`}
         leading={
           <div className="flex flex-wrap items-center gap-2">
-            <BackButton href="/canais" />
+            <BackButton href={basePath} />
             <Button asChild variant="ghost" size="sm">
-              <Link href="/transformacao">Trocar público</Link>
+              <Link href={basePath}>Trocar público</Link>
             </Button>
           </div>
         }
       />
+
+      <IntelligenceNav />
 
       <SurfaceCard className="p-4">
         <div className="flex flex-wrap items-end gap-3">
@@ -109,7 +180,7 @@ export function TransformacaoClient({
             label="Público"
             value={audienceId}
             onChange={(id) => {
-              router.push(`/transformacao/${id}`);
+              router.push(`${basePath}/${id}`);
             }}
             options={audiences.map((a) => ({ value: a.id, label: a.name }))}
             className="min-w-[160px]"
@@ -136,6 +207,8 @@ export function TransformacaoClient({
         </div>
       </SurfaceCard>
 
+      <InsightsFoundSection insights={transformInsights} />
+
       <div className="space-y-5">
         {filteredSummaries.map((summary) => (
           <ChannelMigrationView
@@ -156,7 +229,7 @@ export function TransformacaoClient({
 
       <SurfaceCard className="p-4">
         <h2 className="text-sm font-semibold text-slate-900">
-          Roadmap de migração · {audienceName}
+          Plano de migração · {audienceName}
         </h2>
         <p className="mt-1 text-xs text-[var(--muted-foreground)]">
           Canal atual → Funcionalidade → Canal futuro → Status

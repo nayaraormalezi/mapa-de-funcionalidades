@@ -12,10 +12,12 @@ Frontend + Supabase + CRUD + governança + inteligência analítica.
 - `/inteligencia` — Diagnóstico automático (cobertura, gaps, migração, paridade)
 - `/mapa` — Mapa + matriz + filtros
 - `/funcionalidades/[id]` — Hub de governança
-- `/transformacao` — Atual → Futuro com filtros e prontidão
-- `/comparacao` — Comparação avançada (paridade + experiência)
-- `/gaps` — Gaps com filtros e métricas
-- `/gaps/[id]` — Detalhe de gap
+- `/inteligencia` — Insights | Comparações | Transformações
+- `/inteligencia/comparacoes` — Canal × Canal (paridade + Health canônico)
+- `/inteligencia/transformacoes` — CURRENT × FUTURE (cobertura)
+- `/comparacao`, `/transformacao` — redirects legados → Intelligence
+- `/gaps` — Melhorias (Lacunas · Problemas · Oportunidades)
+- `/gaps/[id]` — Detalhe de problema
 - `/cadastros` — CRUD completo
 
 ### Stack

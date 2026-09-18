@@ -133,3 +133,38 @@ export function catalogAsProducts(now = "2026-09-01T12:00:00.000Z"): Product[] {
     updatedAt: now,
   }));
 }
+
+/** Vazio = transversal (todos os 3 produtos). */
+export function appliesToProduct(
+  productIds: string[] | null | undefined,
+  productId: string,
+): boolean {
+  if (!productIds || productIds.length === 0) return true;
+  return productIds.includes(productId);
+}
+
+/** Rótulo de aplicabilidade com os nomes dos produtos (ex.: "Imobiliário · Veículos Leves"). */
+export function formatApplicabilityLabel(
+  productIds: string[] | null | undefined,
+): string {
+  const ids = (productIds ?? []).filter(isProductId);
+  const resolved =
+    ids.length === 0 || ids.length >= PRODUCT_IDS.length
+      ? [...PRODUCT_IDS]
+      : ids;
+  return resolved.map((id) => getProductMeta(id).shortName).join(" · ");
+}
+
+export function normalizeProductIds(
+  ids: Array<string | null | undefined> | null | undefined,
+  fallback?: string | null,
+): ProductId[] {
+  const fromList = (ids ?? [])
+    .map((id) => parseProductId(id))
+    .filter((id): id is ProductId => Boolean(id));
+  if (fromList.length > 0) {
+    return Array.from(new Set(fromList));
+  }
+  const single = parseProductId(fallback);
+  return single ? [single] : [];
+}

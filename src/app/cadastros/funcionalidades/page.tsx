@@ -6,6 +6,7 @@ import {
   DuplicateFeatureButton,
 } from "@/components/cadastros/row-actions";
 import { PriorityBadge } from "@/components/badges/priority-badge";
+import { ProductMultiSelect } from "@/components/shared/product-multi-select";
 import { BackButton } from "@/components/ui/back-button";
 import {
   Card,
@@ -14,9 +15,10 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { PageBreadcrumb } from "@/components/ui/prototype";
 import { getDatabase } from "@/services/db";
 import { priorityLabel } from "@/lib/labels";
-import { DEFAULT_PRODUCT, PRODUCT_NAME_OPTIONS } from "@/lib/products";
+import { formatApplicabilityLabel } from "@/lib/products";
 
 export default async function CadastroFuncionalidadesPage({
   searchParams,
@@ -33,10 +35,14 @@ export default async function CadastroFuncionalidadesPage({
     <div className="space-y-6">
       <div className="space-y-3">
         <BackButton href="/configuracoes?tab=cadastros" />
-        <div>
-          <p className="text-xs font-semibold tracking-[0.14em] text-[var(--brand)] uppercase">
-            Cadastros
-          </p>
+        <div className="space-y-1">
+          <PageBreadcrumb
+            items={[
+              { label: "Configurações", href: "/configuracoes" },
+              { label: "Cadastros", href: "/configuracoes?tab=cadastros" },
+              { label: "Funcionalidades" },
+            ]}
+          />
           <h1 className="font-[family-name:var(--font-display)] text-2xl font-semibold">
             Funcionalidades
           </h1>
@@ -68,14 +74,6 @@ export default async function CadastroFuncionalidadesPage({
                 }))}
               />
               <Field
-                label="Produto"
-                name="product"
-                as="select"
-                required
-                defaultValue={editing?.product ?? DEFAULT_PRODUCT}
-                options={PRODUCT_NAME_OPTIONS}
-              />
-              <Field
                 label="Prioridade"
                 name="priority"
                 as="select"
@@ -102,6 +100,11 @@ export default async function CadastroFuncionalidadesPage({
                 defaultValue={editing?.productOwner}
               />
             </div>
+            <ProductMultiSelect
+              required
+              defaultSelected={editing?.productIds}
+              hint="Selecione os produtos aos quais esta funcionalidade se aplica."
+            />
             <Field
               label="Descrição"
               name="description"
@@ -133,6 +136,9 @@ export default async function CadastroFuncionalidadesPage({
             >
               <div>
                 <p className="text-sm font-medium">{feature.name}</p>
+                <p className="mt-0.5 text-xs text-[var(--muted-foreground)]">
+                  {formatApplicabilityLabel(feature.productIds)}
+                </p>
                 <div className="mt-1 flex flex-wrap gap-2">
                   <PriorityBadge priority={feature.priority} />
                   {feature.isDemo ? (

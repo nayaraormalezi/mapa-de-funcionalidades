@@ -114,6 +114,124 @@ export async function uploadEvidenceFile(params: {
   };
 }
 
+const EXPERIENCE_IMAGE_MIME = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+] as const;
+
+export function isStoragePath(value: string | null | undefined) {
+  if (!value) return false;
+  return !/^https?:\/\//i.test(value);
+}
+
+export async function resolveExperienceImageUrl(
+  value: string | null | undefined,
+): Promise<string | null> {
+  if (!value) return null;
+  if (!isStoragePath(value)) return value;
+  return createEvidenceSignedUrl(value);
+}
+
+export async function uploadExperienceImage(params: {
+  featureId: string;
+  fccId: string;
+  file: File;
+  previousPath?: string | null;
+}) {
+  if (
+    !EXPERIENCE_IMAGE_MIME.includes(
+      params.file.type as (typeof EXPERIENCE_IMAGE_MIME)[number],
+    ) ||
+    params.file.size <= 0 ||
+    params.file.size > EVIDENCE_MAX_BYTES
+  ) {
+    return {
+      ok: false as const,
+      message: "Imagem inválida. Use JPG, PNG, WEBP ou GIF de até 10 MB.",
+    };
+  }
+
+  const supabase = await createClient();
+  const safe = sanitizeFileName(params.file.name) || "screenshot";
+  const path = `experiences/${params.featureId}/${params.fccId}/${Date.now()}-${safe}`;
+  const buffer = Buffer.from(await params.file.arrayBuffer());
+  const { error } = await supabase.storage
+    .from(EVIDENCE_BUCKET)
+    .upload(path, buffer, {
+      contentType: params.file.type,
+      upsert: false,
+    });
+
+  if (error) {
+    return { ok: false as const, message: error.message };
+  }
+
+  if (
+    params.previousPath &&
+    isStoragePath(params.previousPath) &&
+    params.previousPath !== path
+  ) {
+    await supabase.storage
+      .from(EVIDENCE_BUCKET)
+      .remove([params.previousPath])
+      .catch(() => undefined);
+  }
+
+  return { ok: true as const, filePath: path };
+}
+
+/** Upload de resultado de pesquisa (PDF ou imagem) ligado à implementação. */
+export async function uploadResearchFile(params: {
+  featureId: string;
+  fccId: string;
+  file: File;
+  previousPath?: string | null;
+}) {
+  if (!isAllowedEvidenceFile(params.file)) {
+    return {
+      ok: false as const,
+      message:
+        "Arquivo inválido. Use PDF ou imagem (JPG, PNG, WEBP, GIF) de até 10 MB.",
+    };
+  }
+
+  const supabase = await createClient();
+  const safe = sanitizeFileName(params.file.name) || "pesquisa";
+  const path = `research/${params.featureId}/${params.fccId}/${Date.now()}-${safe}`;
+  const buffer = Buffer.from(await params.file.arrayBuffer());
+  const { error } = await supabase.storage
+    .from(EVIDENCE_BUCKET)
+    .upload(path, buffer, {
+      contentType: params.file.type,
+      upsert: false,
+    });
+
+  if (error) {
+    return { ok: false as const, message: error.message };
+  }
+
+  if (
+    params.previousPath &&
+    isStoragePath(params.previousPath) &&
+    params.previousPath !== path
+  ) {
+    await supabase.storage
+      .from(EVIDENCE_BUCKET)
+      .remove([params.previousPath])
+      .catch(() => undefined);
+  }
+
+  return {
+    ok: true as const,
+    filePath: path,
+    fileName: params.file.name,
+    fileMime: params.file.type,
+    fileSize: params.file.size,
+  };
+}
+
 export async function removeEvidenceFile(filePath: string | null | undefined) {
   if (!filePath) return;
   const supabase = await createClient();

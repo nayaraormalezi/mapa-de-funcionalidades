@@ -1,3 +1,11 @@
+/**
+ * Comparison API — leitura Canal × Canal.
+ *
+ * Fontes: compareChannels (FCC + Issues) + getAdvancedComparison (Health canônico).
+ * Sem persistência. Sem demo fallback em erro.
+ * Em LIVE, autenticação via proxy/middleware (redirect login).
+ * Sem Admin gate — análise de leitura.
+ */
 import { compareChannels } from "@/services/transformation";
 import { getAdvancedComparison } from "@/services/intelligence";
 import { NextResponse } from "next/server";

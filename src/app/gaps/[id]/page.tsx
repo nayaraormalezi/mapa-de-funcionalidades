@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { upsertGap } from "@/app/actions/crud";
+import { upsertIssue } from "@/app/actions/crud";
 import { PriorityBadge } from "@/components/badges/priority-badge";
 import { CrudForm, Field } from "@/components/cadastros/crud-form";
 import { ArchiveButton } from "@/components/cadastros/row-actions";
@@ -14,21 +14,24 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
+  CONCEPT_LABEL,
   evidenceTypeLabel,
   gapStatusLabel,
   gapTypeLabel,
   priorityLabel,
 } from "@/lib/labels";
+import { PageBreadcrumb } from "@/components/ui/prototype";
+import { getIssueRelatedEvidences } from "@/services/evidence";
 import { getDatabase } from "@/services/db";
-import { getGapById } from "@/services/gaps";
+import { getIssueById } from "@/services/gaps";
 
-export default async function GapDetailPage({
+export default async function IssueDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const gap = await getGapById(id);
+  const gap = await getIssueById(id);
   if (!gap) notFound();
 
   const db = await getDatabase();
@@ -45,14 +48,16 @@ export default async function GapDetailPage({
   const futureChannel = gap.futureChannelId
     ? db.channels.find((c) => c.id === gap.futureChannelId)
     : undefined;
-  const evidences = db.evidences.filter((e) =>
-    gap.evidenceIds.includes(e.id),
-  );
+  /** Canônico: Feature-owned (+ fallback legado evidenceIds). */
+  const evidences = await getIssueRelatedEvidences({
+    featureId: gap.featureId,
+    legacyEvidenceIds: gap.evidenceIds,
+  });
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-3">
-        <BackButton href="/gaps" />
+        <BackButton href="/gaps?tab=issues" />
         {feature ? (
           <Button asChild variant="outline" size="sm">
             <Link href={`/funcionalidades/${feature.id}`}>
@@ -64,7 +69,16 @@ export default async function GapDetailPage({
       </div>
 
       <section className="space-y-2">
+        <PageBreadcrumb
+          items={[
+            { label: CONCEPT_LABEL.melhorias, href: "/gaps" },
+            { label: gap.title },
+          ]}
+        />
         <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-slate-700 ring-1 ring-slate-200 uppercase">
+            {CONCEPT_LABEL.issue}
+          </span>
           <span className="rounded-md bg-rose-50 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-rose-800 ring-1 ring-rose-200 uppercase">
             {gapTypeLabel[gap.type]}
           </span>
@@ -111,7 +125,7 @@ export default async function GapDetailPage({
         <CardContent className="space-y-2">
           {evidences.length === 0 ? (
             <p className="text-sm text-[var(--muted-foreground)]">
-              Nenhuma evidência vinculada a este gap.
+              Nenhuma evidência vinculada a esta {CONCEPT_LABEL.issue.toLowerCase()}.
             </p>
           ) : (
             evidences.map((evidence) => (
@@ -131,13 +145,13 @@ export default async function GapDetailPage({
 
       <Card>
         <CardHeader>
-          <CardTitle>Editar gap</CardTitle>
+          <CardTitle>Editar {CONCEPT_LABEL.issue.toLowerCase()}</CardTitle>
           <CardDescription>
             Atualize impacto, prioridade, status e plano de ação.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <CrudForm action={upsertGap}>
+          <CrudForm action={upsertIssue}>
             <input type="hidden" name="id" value={gap.id} />
             {gap.isDemo ? (
               <input type="hidden" name="is_demo" value="true" />
