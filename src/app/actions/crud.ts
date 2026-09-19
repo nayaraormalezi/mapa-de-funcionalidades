@@ -653,9 +653,8 @@ export async function ensureJourneyStagesForAudiences(input: {
     updated_at: new Date().toISOString(),
   }));
 
-  const { error } = await supabase.from("journey_audience_stages").upsert(rows, {
-    onConflict: "audience_id,journey_id,moment_id",
-  });
+  // Unique canônico é (audience_id, journey_stage_id). Aqui só criamos ausentes.
+  const { error } = await supabase.from("journey_audience_stages").insert(rows);
 
   if (error) return { ok: false, message: error.message };
 

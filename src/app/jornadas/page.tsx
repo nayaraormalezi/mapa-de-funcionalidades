@@ -41,7 +41,10 @@ export default async function JornadasPage({
           s.active &&
           s.audienceId === audience.id &&
           (s.journeyStageId === stage.id ||
-            (!s.journeyStageId && s.journeyId === stage.id)),
+            (!s.journeyStageId &&
+              (s.journeyId === stage.id ||
+                // Legado: JAS.journey_id = jrn-contratacao → etapa js-jrn-contratacao
+                `js-${s.journeyId}` === stage.id))),
       );
       return {
         /** id de seleção = etapa (JourneyStage). */
