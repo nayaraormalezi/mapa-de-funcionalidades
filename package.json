@@ -17,7 +17,9 @@
     "test:reports": "npx --yes tsx src/lib/report-metrics.assert.ts",
     "typecheck": "tsc --noEmit",
     "seed:fase16-3:dry": "npx --yes tsx scripts/load-fase16-3-catalog.ts --dry-run",
-    "seed:fase16-3": "npx --yes tsx scripts/load-fase16-3-catalog.ts --apply"
+    "seed:fase16-3": "npx --yes tsx scripts/load-fase16-3-catalog.ts --apply",
+    "import:fcc-teste:dry": "npx --yes tsx scripts/import-fcc-teste.ts --dry-run",
+    "import:fcc-teste": "npx --yes tsx scripts/import-fcc-teste.ts --apply"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
