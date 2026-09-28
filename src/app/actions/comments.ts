@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireAuthenticated, requireCanEdit } from "@/lib/auth";
+import { retainMentionsInContent } from "@/lib/comment-mentions";
 import { roleCan } from "@/lib/permissions";
 import { createClient, isSupabaseEnabled } from "@/lib/supabase/server";
 
@@ -9,6 +10,11 @@ export type ActionResult = {
   ok: boolean;
   message: string;
   id?: string;
+};
+
+export type CommentMentionDTO = {
+  userId: string;
+  fullName: string;
 };
 
 export type FeatureCommentDTO = {
@@ -20,10 +26,21 @@ export type FeatureCommentDTO = {
   createdAt: string;
   updatedAt: string;
   authorName: string;
+  mentions: CommentMentionDTO[];
+};
+
+export type MentionableUserDTO = {
+  id: string;
+  fullName: string;
+  email: string;
 };
 
 function newCommentId() {
   return `cmt-${crypto.randomUUID().slice(0, 8)}`;
+}
+
+function newMentionId() {
+  return `mcm-${crypto.randomUUID().slice(0, 8)}`;
 }
 
 function demoBlocked(): ActionResult {
@@ -34,8 +51,50 @@ function demoBlocked(): ActionResult {
   };
 }
 
+function revalidateCommentSurfaces(featureId: string) {
+  revalidatePath(`/funcionalidades/${featureId}`);
+  revalidatePath("/roadmap");
+  revalidatePath("/mapa");
+}
+
+async function resolveProfileNames(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userIds: string[],
+): Promise<Map<string, string>> {
+  const nameByUser = new Map<string, string>();
+  const unique = Array.from(new Set(userIds.filter(Boolean)));
+  if (!unique.length) return nameByUser;
+
+  const { data, error } = await supabase.rpc("resolve_profile_public_names", {
+    ids: unique,
+  });
+
+  if (!error && Array.isArray(data)) {
+    for (const row of data as Array<{ id: string; full_name: string }>) {
+      nameByUser.set(
+        String(row.id),
+        String(row.full_name ?? "").trim() || "Usuário",
+      );
+    }
+    return nameByUser;
+  }
+
+  // Fallback (RPC ainda não aplicada / DEMO parcial).
+  const { data: profiles } = await supabase
+    .from("profiles")
+    .select("id, full_name")
+    .in("id", unique);
+  for (const p of profiles ?? []) {
+    nameByUser.set(
+      String(p.id),
+      String(p.full_name ?? "").trim() || "Usuário",
+    );
+  }
+  return nameByUser;
+}
+
 /**
- * Lista comentários de uma Feature.
+ * Lista comentários de uma Feature (fonte única para prévia e ficha).
  * Contagem = principais + respostas (todos os registros retornados).
  */
 export async function listFeatureComments(
@@ -72,47 +131,132 @@ export async function listFeatureComments(
 
   if (error) return { ok: false, message: error.message };
 
-  const userIds = Array.from(
-    new Set((data ?? []).map((row) => String(row.user_id))),
-  );
-  const nameByUser = new Map<string, string>();
-  if (userIds.length) {
-    const { data: profiles } = await supabase
-      .from("profiles")
-      .select("id, full_name")
-      .in("id", userIds);
-    for (const p of profiles ?? []) {
-      nameByUser.set(
-        String(p.id),
-        String(p.full_name ?? "").trim() || "Usuário",
-      );
+  const commentIds = (data ?? []).map((row) => String(row.id));
+  const mentionsByComment = new Map<string, Array<{ userId: string }>>();
+
+  if (commentIds.length) {
+    const { data: mentionRows } = await supabase
+      .from("feature_comment_mentions")
+      .select("comment_id, mentioned_user_id")
+      .in("comment_id", commentIds);
+
+    for (const row of mentionRows ?? []) {
+      const cid = String(row.comment_id);
+      const list = mentionsByComment.get(cid) ?? [];
+      list.push({ userId: String(row.mentioned_user_id) });
+      mentionsByComment.set(cid, list);
     }
   }
 
-  const comments: FeatureCommentDTO[] = (data ?? []).map((row) => ({
-    id: String(row.id),
-    featureId: String(row.feature_id),
-    userId: String(row.user_id),
-    parentCommentId: row.parent_comment_id
-      ? String(row.parent_comment_id)
-      : null,
-    content: String(row.content ?? ""),
-    createdAt: String(row.created_at),
-    updatedAt: String(row.updated_at),
-    authorName: nameByUser.get(String(row.user_id)) ?? "Usuário",
-  }));
+  const authorIds = (data ?? []).map((row) => String(row.user_id));
+  const mentionedIds = Array.from(mentionsByComment.values()).flatMap((list) =>
+    list.map((m) => m.userId),
+  );
+  const nameByUser = await resolveProfileNames(supabase, [
+    ...authorIds,
+    ...mentionedIds,
+  ]);
+
+  const comments: FeatureCommentDTO[] = (data ?? []).map((row) => {
+    const cid = String(row.id);
+    const rawMentions = mentionsByComment.get(cid) ?? [];
+    const mentions: CommentMentionDTO[] = [];
+    const seen = new Set<string>();
+    for (const m of rawMentions) {
+      if (seen.has(m.userId)) continue;
+      seen.add(m.userId);
+      mentions.push({
+        userId: m.userId,
+        fullName: nameByUser.get(m.userId) ?? "Usuário",
+      });
+    }
+    return {
+      id: cid,
+      featureId: String(row.feature_id),
+      userId: String(row.user_id),
+      parentCommentId: row.parent_comment_id
+        ? String(row.parent_comment_id)
+        : null,
+      content: String(row.content ?? ""),
+      createdAt: String(row.created_at),
+      updatedAt: String(row.updated_at),
+      authorName: nameByUser.get(String(row.user_id)) ?? "Usuário",
+      mentions,
+    };
+  });
 
   return { ok: true, comments };
 }
 
 /**
+ * Busca usuários ativos para autocomplete de @.
+ * Usa RPC security definer (não abre listagem admin de profiles).
+ */
+export async function searchMentionableUsers(
+  query: string,
+): Promise<{ ok: true; users: MentionableUserDTO[] } | ActionResult> {
+  const gated = await requireAuthenticated();
+  if (!gated.ok) return gated;
+  if (!roleCan(gated.auth.role, "comment.create")) {
+    return { ok: false, message: "Permissão insuficiente para mencionar." };
+  }
+
+  const q = String(query ?? "").trim();
+
+  if (!isSupabaseEnabled()) {
+    const demo: MentionableUserDTO[] = [
+      {
+        id: "demo-local",
+        fullName: "Nayara Melo",
+        email: "nayara.melo@caixaconsorcio.com.br",
+      },
+      {
+        id: "demo-editor",
+        fullName: "Editor Demo",
+        email: "editor@caixaconsorcio.com.br",
+      },
+      {
+        id: "demo-viewer",
+        fullName: "Viewer Demo",
+        email: "viewer@caixaconsorcio.com.br",
+      },
+    ].filter((u) => {
+      if (!q) return true;
+      const hay = `${u.fullName} ${u.email}`.toLowerCase();
+      return hay.includes(q.toLowerCase());
+    });
+    return { ok: true, users: demo.slice(0, 8) };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("search_mentionable_profiles", {
+    q,
+    lim: 8,
+  });
+
+  if (error) return { ok: false, message: error.message };
+
+  const users: MentionableUserDTO[] = (data ?? []).map(
+    (row: { id: string; full_name: string; email: string }) => ({
+      id: String(row.id),
+      fullName: String(row.full_name ?? "").trim() || "Usuário",
+      email: String(row.email ?? ""),
+    }),
+  );
+
+  return { ok: true, users };
+}
+
+/**
  * Cria comentário principal ou resposta.
  * Se parent for uma resposta, a nova resposta vincula-se ao comentário raiz.
+ * Menções: apenas user_ids ativos cujo @Nome permanece no texto.
  */
 export async function createFeatureComment(input: {
   featureId: string;
   content: string;
   parentCommentId?: string | null;
+  mentionedUserIds?: string[];
 }): Promise<ActionResult> {
   const gated = await requireAuthenticated();
   if (!gated.ok) return gated;
@@ -124,6 +268,13 @@ export async function createFeatureComment(input: {
   const featureId = String(input.featureId ?? "").trim();
   const content = String(input.content ?? "").trim();
   const parentRaw = String(input.parentCommentId ?? "").trim() || null;
+  const requestedMentionIds = Array.from(
+    new Set(
+      (input.mentionedUserIds ?? [])
+        .map((id) => String(id ?? "").trim())
+        .filter(Boolean),
+    ),
+  );
 
   if (!featureId) return { ok: false, message: "Funcionalidade inválida." };
   if (!content) return { ok: false, message: "Escreva um comentário." };
@@ -160,6 +311,24 @@ export async function createFeatureComment(input: {
       : String(parent.id);
   }
 
+  let pending: Array<{ userId: string; fullName: string }> = [];
+  if (requestedMentionIds.length) {
+    const { data: validRows, error: validError } = await supabase.rpc(
+      "filter_mentionable_user_ids",
+      { ids: requestedMentionIds },
+    );
+    if (validError) return { ok: false, message: validError.message };
+
+    const valid = (validRows ?? []) as Array<{ id: string; full_name: string }>;
+    pending = retainMentionsInContent(
+      content,
+      valid.map((row) => ({
+        userId: String(row.id),
+        fullName: String(row.full_name ?? "").trim() || "Usuário",
+      })),
+    );
+  }
+
   const id = newCommentId();
   const { error } = await supabase.from("feature_comments").insert({
     id,
@@ -171,11 +340,27 @@ export async function createFeatureComment(input: {
 
   if (error) return { ok: false, message: error.message };
 
-  revalidatePath(`/funcionalidades/${featureId}`);
+  if (pending.length) {
+    const rows = pending.map((m) => ({
+      id: newMentionId(),
+      comment_id: id,
+      mentioned_user_id: m.userId,
+    }));
+    const { error: mentionError } = await supabase
+      .from("feature_comment_mentions")
+      .insert(rows);
+    if (mentionError) {
+      // Comentário já existe; remove para não deixar estado inconsistente.
+      await supabase.from("feature_comments").delete().eq("id", id);
+      return { ok: false, message: mentionError.message };
+    }
+  }
+
+  revalidateCommentSurfaces(featureId);
   return { ok: true, message: "Comentário publicado.", id };
 }
 
-/** Exclui comentário (e respostas em cascade). Admin/Editor apenas. */
+/** Exclui comentário (e respostas/menções em cascade). Admin/Editor apenas. */
 export async function deleteFeatureComment(
   commentId: string,
 ): Promise<ActionResult> {
@@ -216,6 +401,6 @@ export async function deleteFeatureComment(
 
   if (error) return { ok: false, message: error.message };
 
-  revalidatePath(`/funcionalidades/${existing.feature_id}`);
+  revalidateCommentSurfaces(String(existing.feature_id));
   return { ok: true, message: "Comentário excluído." };
 }

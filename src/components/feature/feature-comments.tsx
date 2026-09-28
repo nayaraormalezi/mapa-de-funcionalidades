@@ -1,16 +1,37 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import {
   createFeatureComment,
   deleteFeatureComment,
   listFeatureComments,
+  searchMentionableUsers,
   type FeatureCommentDTO,
+  type MentionableUserDTO,
 } from "@/app/actions/comments";
 import { useAuth } from "@/components/auth/auth-provider";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { ActionMenu } from "@/components/ui/action-menu";
 import { Button } from "@/components/ui/button";
+import {
+  detectMentionQuery,
+  insertMentionAt,
+  retainMentionsInContent,
+  segmentCommentContent,
+  type PendingMention,
+} from "@/lib/comment-mentions";
+import {
+  notifyFeatureCommentsChanged,
+  subscribeFeatureCommentsChanged,
+} from "@/lib/comment-sync";
 import { roleCan } from "@/lib/permissions";
 import { cn, formatDateTime } from "@/lib/utils";
 import { MessageSquare } from "lucide-react";
@@ -33,6 +54,27 @@ function AuthorAvatar({ name }: { name: string }) {
   );
 }
 
+function CommentBody({ comment }: { comment: FeatureCommentDTO }) {
+  const segments = segmentCommentContent(comment.content, comment.mentions);
+  return (
+    <p className="mt-2 whitespace-pre-wrap break-words text-sm text-slate-700">
+      {segments.map((seg, idx) =>
+        seg.type === "mention" ? (
+          <span
+            key={`${seg.userId}-${idx}`}
+            title={seg.fullName}
+            className="rounded bg-sky-50 px-0.5 font-medium text-sky-800"
+          >
+            {seg.value}
+          </span>
+        ) : (
+          <span key={`t-${idx}`}>{seg.value}</span>
+        ),
+      )}
+    </p>
+  );
+}
+
 function CommentComposer({
   placeholder,
   submitLabel,
@@ -43,25 +85,196 @@ function CommentComposer({
 }: {
   placeholder: string;
   submitLabel: string;
-  onSubmit: (content: string) => Promise<boolean>;
+  onSubmit: (
+    content: string,
+    mentionedUserIds: string[],
+  ) => Promise<boolean>;
   pending: boolean;
   autoFocus?: boolean;
   onCancel?: () => void;
 }) {
+  const listId = useId();
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [value, setValue] = useState("");
+  const [cursor, setCursor] = useState(0);
+  const [pendingMentions, setPendingMentions] = useState<PendingMention[]>([]);
+  const [suggestions, setSuggestions] = useState<MentionableUserDTO[]>([]);
+  const [mentionOpen, setMentionOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const empty = !value.trim();
 
+  const mentionState = useMemo(
+    () => detectMentionQuery(value, cursor),
+    [value, cursor],
+  );
+
+  useEffect(() => {
+    if (!mentionState) {
+      setMentionOpen(false);
+      setSuggestions([]);
+      setSearchError(null);
+      return;
+    }
+
+    let cancelled = false;
+    const handle = window.setTimeout(async () => {
+      setSearching(true);
+      setSearchError(null);
+      const result = await searchMentionableUsers(mentionState.query);
+      if (cancelled) return;
+      setSearching(false);
+      if (!("users" in result) || !result.ok) {
+        setSuggestions([]);
+        setSearchError(
+          "message" in result ? result.message : "Falha ao buscar usuários.",
+        );
+        setMentionOpen(true);
+        return;
+      }
+      setSuggestions(result.users);
+      setActiveIndex(0);
+      setMentionOpen(true);
+    }, 120);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(handle);
+    };
+  }, [mentionState]);
+
+  function syncCursor() {
+    const el = textareaRef.current;
+    if (el) setCursor(el.selectionStart ?? value.length);
+  }
+
+  function applyMention(user: MentionableUserDTO) {
+    const result = insertMentionAt(value, cursor, {
+      id: user.id,
+      fullName: user.fullName,
+      email: user.email,
+    });
+    setValue(result.text);
+    setCursor(result.cursor);
+    setPendingMentions((prev) =>
+      retainMentionsInContent(result.text, [...prev, result.pending]),
+    );
+    setMentionOpen(false);
+    setSuggestions([]);
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(result.cursor, result.cursor);
+    });
+  }
+
+  function onChangeValue(next: string) {
+    setValue(next);
+    setPendingMentions((prev) => retainMentionsInContent(next, prev));
+  }
+
   return (
-    <div className="space-y-2">
+    <div className="relative space-y-2">
       <textarea
+        ref={textareaRef}
         value={value}
-        onChange={(e) => setValue(e.target.value)}
+        onChange={(e) => {
+          onChangeValue(e.target.value);
+          setCursor(e.target.selectionStart ?? e.target.value.length);
+        }}
+        onClick={syncCursor}
+        onKeyUp={syncCursor}
+        onSelect={syncCursor}
+        onKeyDown={(e) => {
+          if (!mentionOpen) return;
+          if (e.key === "ArrowDown") {
+            e.preventDefault();
+            setActiveIndex((i) =>
+              suggestions.length ? (i + 1) % suggestions.length : 0,
+            );
+            return;
+          }
+          if (e.key === "ArrowUp") {
+            e.preventDefault();
+            setActiveIndex((i) =>
+              suggestions.length
+                ? (i - 1 + suggestions.length) % suggestions.length
+                : 0,
+            );
+            return;
+          }
+          if (e.key === "Enter" && suggestions[activeIndex]) {
+            e.preventDefault();
+            applyMention(suggestions[activeIndex]!);
+            return;
+          }
+          if (e.key === "Escape") {
+            e.preventDefault();
+            setMentionOpen(false);
+          }
+        }}
         placeholder={placeholder}
         rows={3}
         autoFocus={autoFocus}
         disabled={pending}
+        aria-autocomplete="list"
+        aria-controls={mentionOpen ? listId : undefined}
+        aria-expanded={mentionOpen}
         className="w-full resize-y rounded-lg border border-[var(--border)] bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-[var(--brand)] focus:outline-none focus:ring-2 focus:ring-[var(--brand)]/20 disabled:opacity-60"
       />
+
+      {mentionOpen ? (
+        <div
+          id={listId}
+          role="listbox"
+          className="absolute z-20 mt-1 w-full max-w-sm overflow-hidden rounded-lg border border-[var(--border)] bg-white shadow-lg"
+        >
+          {searching ? (
+            <p className="px-3 py-2 text-xs text-slate-500">Buscando…</p>
+          ) : searchError ? (
+            <p className="px-3 py-2 text-xs text-rose-600">{searchError}</p>
+          ) : suggestions.length === 0 ? (
+            <p className="px-3 py-2 text-xs text-slate-500">
+              Nenhum usuário encontrado
+            </p>
+          ) : (
+            <ul className="max-h-48 overflow-y-auto py-1">
+              {suggestions.map((user, index) => (
+                <li key={user.id}>
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={index === activeIndex}
+                    className={cn(
+                      "flex w-full items-center gap-2 px-3 py-2 text-left text-sm",
+                      index === activeIndex
+                        ? "bg-sky-50 text-sky-900"
+                        : "text-slate-800 hover:bg-slate-50",
+                    )}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => applyMention(user)}
+                  >
+                    <AuthorAvatar name={user.fullName} />
+                    <span className="min-w-0">
+                      <span className="block truncate font-medium">
+                        {user.fullName}
+                      </span>
+                      {user.email ? (
+                        <span className="block truncate text-xs text-slate-500">
+                          {user.email}
+                        </span>
+                      ) : null}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ) : null}
+
       <div className="flex flex-wrap items-center justify-end gap-2">
         {onCancel ? (
           <Button
@@ -79,8 +292,17 @@ function CommentComposer({
           size="sm"
           disabled={empty || pending}
           onClick={async () => {
-            const ok = await onSubmit(value.trim());
-            if (ok) setValue("");
+            const mentions = retainMentionsInContent(value, pendingMentions);
+            const ok = await onSubmit(
+              value.trim(),
+              mentions.map((m) => m.userId),
+            );
+            if (ok) {
+              setValue("");
+              setPendingMentions([]);
+              setMentionOpen(false);
+              setCursor(0);
+            }
           }}
         >
           {pending ? "Enviando…" : submitLabel}
@@ -118,7 +340,9 @@ export function FeatureComments({
     setError(null);
     const result = await listFeatureComments(featureId);
     if (!("comments" in result) || !result.ok) {
-      setError("message" in result ? result.message : "Erro ao carregar comentários.");
+      setError(
+        "message" in result ? result.message : "Erro ao carregar comentários.",
+      );
       setComments([]);
       setLoading(false);
       return;
@@ -129,6 +353,20 @@ export function FeatureComments({
 
   useEffect(() => {
     void reload();
+  }, [reload]);
+
+  useEffect(() => {
+    return subscribeFeatureCommentsChanged((changedId) => {
+      if (changedId === featureId) void reload();
+    });
+  }, [featureId, reload]);
+
+  useEffect(() => {
+    function onVisible() {
+      if (document.visibilityState === "visible") void reload();
+    }
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
   }, [reload]);
 
   const roots = useMemo(
@@ -154,6 +392,7 @@ export function FeatureComments({
 
   async function handleCreate(
     content: string,
+    mentionedUserIds: string[],
     parentCommentId?: string | null,
   ): Promise<boolean> {
     return await new Promise((resolve) => {
@@ -162,6 +401,7 @@ export function FeatureComments({
           featureId,
           content,
           parentCommentId: parentCommentId ?? null,
+          mentionedUserIds,
         });
         if (!result.ok) {
           setError(result.message);
@@ -171,6 +411,7 @@ export function FeatureComments({
         setError(null);
         setReplyToId(null);
         await reload();
+        notifyFeatureCommentsChanged(featureId);
         resolve(true);
       });
     });
@@ -188,6 +429,7 @@ export function FeatureComments({
       setDeleteTarget(null);
       setError(null);
       await reload();
+      notifyFeatureCommentsChanged(featureId);
     });
   }
 
@@ -226,9 +468,7 @@ export function FeatureComments({
                 />
               ) : null}
             </div>
-            <p className="mt-2 whitespace-pre-wrap break-words text-sm text-slate-700">
-              {comment.content}
-            </p>
+            <CommentBody comment={comment} />
             {canCreate ? (
               <button
                 type="button"
@@ -245,12 +485,14 @@ export function FeatureComments({
             {replyToId === comment.id ? (
               <div className="mt-3">
                 <CommentComposer
-                  placeholder="Escrever resposta..."
+                  placeholder="Escrever resposta... Use @ para mencionar"
                   submitLabel="Responder"
                   pending={pending}
                   autoFocus
                   onCancel={() => setReplyToId(null)}
-                  onSubmit={(content) => handleCreate(content, comment.id)}
+                  onSubmit={(content, mentionedUserIds) =>
+                    handleCreate(content, mentionedUserIds, comment.id)
+                  }
                 />
               </div>
             ) : null}
@@ -283,10 +525,12 @@ export function FeatureComments({
 
       {canCreate ? (
         <CommentComposer
-          placeholder="Adicione um comentário..."
+          placeholder="Adicione um comentário... Use @ para mencionar"
           submitLabel="Comentar"
           pending={pending}
-          onSubmit={(content) => handleCreate(content)}
+          onSubmit={(content, mentionedUserIds) =>
+            handleCreate(content, mentionedUserIds)
+          }
         />
       ) : (
         <p className="rounded-lg border border-dashed border-[var(--border)] px-3 py-2 text-xs text-slate-500">
