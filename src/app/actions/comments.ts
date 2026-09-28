@@ -3,8 +3,16 @@
 import { revalidatePath } from "next/cache";
 import { requireAuthenticated, requireCanEdit } from "@/lib/auth";
 import { retainMentionsInContent } from "@/lib/comment-mentions";
+import {
+  canViewInternalComments,
+  mentionAllowedRoles,
+  normalizeCommentVisibility,
+  resolveCreateVisibility,
+  type CommentVisibility,
+} from "@/lib/comment-visibility";
 import { roleCan } from "@/lib/permissions";
 import { createClient, isSupabaseEnabled } from "@/lib/supabase/server";
+import type { UserRole } from "@/types";
 
 export type ActionResult = {
   ok: boolean;
@@ -23,6 +31,7 @@ export type FeatureCommentDTO = {
   userId: string;
   parentCommentId: string | null;
   content: string;
+  visibility: CommentVisibility;
   createdAt: string;
   updatedAt: string;
   authorName: string;
@@ -79,7 +88,6 @@ async function resolveProfileNames(
     return nameByUser;
   }
 
-  // Fallback (RPC ainda não aplicada / DEMO parcial).
   const { data: profiles } = await supabase
     .from("profiles")
     .select("id, full_name")
@@ -95,7 +103,7 @@ async function resolveProfileNames(
 
 /**
  * Lista comentários de uma Feature (fonte única para prévia e ficha).
- * Contagem = principais + respostas (todos os registros retornados).
+ * Viewer: somente PUBLIC (filtro backend + RLS). Contagem = registros retornados.
  */
 export async function listFeatureComments(
   featureId: string,
@@ -121,14 +129,20 @@ export async function listFeatureComments(
   if (featureError) return { ok: false, message: featureError.message };
   if (!feature) return { ok: false, message: "Funcionalidade não encontrada." };
 
-  const { data, error } = await supabase
+  let query = supabase
     .from("feature_comments")
     .select(
-      "id, feature_id, user_id, parent_comment_id, content, created_at, updated_at",
+      "id, feature_id, user_id, parent_comment_id, content, visibility, created_at, updated_at",
     )
     .eq("feature_id", id)
     .order("created_at", { ascending: false });
 
+  // Defesa em profundidade além do RLS: viewer nunca recebe INTERNAL.
+  if (!canViewInternalComments(gated.auth.role)) {
+    query = query.eq("visibility", "PUBLIC");
+  }
+
+  const { data, error } = await query;
   if (error) return { ok: false, message: error.message };
 
   const commentIds = (data ?? []).map((row) => String(row.id));
@@ -178,6 +192,7 @@ export async function listFeatureComments(
         ? String(row.parent_comment_id)
         : null,
       content: String(row.content ?? ""),
+      visibility: normalizeCommentVisibility(row.visibility, "PUBLIC"),
       createdAt: String(row.created_at),
       updatedAt: String(row.updated_at),
       authorName: nameByUser.get(String(row.user_id)) ?? "Usuário",
@@ -190,10 +205,11 @@ export async function listFeatureComments(
 
 /**
  * Busca usuários ativos para autocomplete de @.
- * Usa RPC security definer (não abre listagem admin de profiles).
+ * visibility=INTERNAL → somente admin/editor.
  */
 export async function searchMentionableUsers(
   query: string,
+  visibility: CommentVisibility = "PUBLIC",
 ): Promise<{ ok: true; users: MentionableUserDTO[] } | ActionResult> {
   const gated = await requireAuthenticated();
   if (!gated.ok) return gated;
@@ -201,30 +217,46 @@ export async function searchMentionableUsers(
     return { ok: false, message: "Permissão insuficiente para mencionar." };
   }
 
+  const vis = normalizeCommentVisibility(visibility, "PUBLIC");
+  if (vis === "INTERNAL" && !canViewInternalComments(gated.auth.role)) {
+    return {
+      ok: false,
+      message: "Permissão insuficiente para mencionar em comentário interno.",
+    };
+  }
+
   const q = String(query ?? "").trim();
+  const roles = mentionAllowedRoles(vis);
 
   if (!isSupabaseEnabled()) {
-    const demo: MentionableUserDTO[] = [
+    const demoAll: Array<MentionableUserDTO & { role: UserRole }> = [
       {
         id: "demo-local",
         fullName: "Nayara Melo",
         email: "nayara.melo@caixaconsorcio.com.br",
+        role: "admin",
       },
       {
         id: "demo-editor",
         fullName: "Editor Demo",
         email: "editor@caixaconsorcio.com.br",
+        role: "editor",
       },
       {
         id: "demo-viewer",
         fullName: "Viewer Demo",
         email: "viewer@caixaconsorcio.com.br",
+        role: "viewer",
       },
-    ].filter((u) => {
-      if (!q) return true;
-      const hay = `${u.fullName} ${u.email}`.toLowerCase();
-      return hay.includes(q.toLowerCase());
-    });
+    ];
+    const demo = demoAll
+      .filter((u) => !roles || roles.includes(u.role))
+      .filter((u) => {
+        if (!q) return true;
+        const hay = `${u.fullName} ${u.email}`.toLowerCase();
+        return hay.includes(q.toLowerCase());
+      })
+      .map(({ id, fullName, email }) => ({ id, fullName, email }));
     return { ok: true, users: demo.slice(0, 8) };
   }
 
@@ -232,6 +264,7 @@ export async function searchMentionableUsers(
   const { data, error } = await supabase.rpc("search_mentionable_profiles", {
     q,
     lim: 8,
+    allowed_roles: roles,
   });
 
   if (error) return { ok: false, message: error.message };
@@ -249,14 +282,14 @@ export async function searchMentionableUsers(
 
 /**
  * Cria comentário principal ou resposta.
- * Se parent for uma resposta, a nova resposta vincula-se ao comentário raiz.
- * Menções: apenas user_ids ativos cujo @Nome permanece no texto.
+ * Resposta herda visibility do pai. Viewer só PUBLIC.
  */
 export async function createFeatureComment(input: {
   featureId: string;
   content: string;
   parentCommentId?: string | null;
   mentionedUserIds?: string[];
+  visibility?: CommentVisibility;
 }): Promise<ActionResult> {
   const gated = await requireAuthenticated();
   if (!gated.ok) return gated;
@@ -295,36 +328,94 @@ export async function createFeatureComment(input: {
   if (!feature) return { ok: false, message: "Funcionalidade não encontrada." };
 
   let parentCommentId: string | null = null;
+  let parentVisibility: CommentVisibility | null = null;
+
   if (parentRaw) {
     const { data: parent, error: parentError } = await supabase
       .from("feature_comments")
-      .select("id, feature_id, parent_comment_id")
+      .select("id, feature_id, parent_comment_id, visibility")
       .eq("id", parentRaw)
       .maybeSingle();
     if (parentError) return { ok: false, message: parentError.message };
     if (!parent || String(parent.feature_id) !== featureId) {
       return { ok: false, message: "Comentário pai não encontrado." };
     }
-    // Um nível: respostas a respostas vinculam-se ao principal.
+
+    parentVisibility = normalizeCommentVisibility(parent.visibility, "PUBLIC");
+
+    // Viewer não deve conseguir ler INTERNAL via RLS; se chegou null/ausente, tratar.
+    if (
+      parentVisibility === "INTERNAL" &&
+      !canViewInternalComments(gated.auth.role)
+    ) {
+      return {
+        ok: false,
+        message: "Permissão insuficiente para responder comentário interno.",
+      };
+    }
+
     parentCommentId = parent.parent_comment_id
       ? String(parent.parent_comment_id)
       : String(parent.id);
+
+    // Se o pai resolvido for outro (resposta→raiz), herda visibility da raiz.
+    if (parent.parent_comment_id) {
+      const { data: root, error: rootError } = await supabase
+        .from("feature_comments")
+        .select("id, visibility")
+        .eq("id", parentCommentId)
+        .maybeSingle();
+      if (rootError) return { ok: false, message: rootError.message };
+      if (!root) return { ok: false, message: "Comentário pai não encontrado." };
+      parentVisibility = normalizeCommentVisibility(root.visibility, "PUBLIC");
+    }
   }
 
+  const resolved = resolveCreateVisibility({
+    role: gated.auth.role,
+    requested: input.visibility,
+    parentVisibility,
+  });
+  if (!resolved.ok) return resolved;
+  const visibility = resolved.visibility;
+
+  const roles = mentionAllowedRoles(visibility);
   let pending: Array<{ userId: string; fullName: string }> = [];
   if (requestedMentionIds.length) {
     const { data: validRows, error: validError } = await supabase.rpc(
       "filter_mentionable_user_ids",
-      { ids: requestedMentionIds },
+      { ids: requestedMentionIds, allowed_roles: roles },
     );
     if (validError) return { ok: false, message: validError.message };
 
-    const valid = (validRows ?? []) as Array<{ id: string; full_name: string }>;
+    const validMap = new Map<string, string>();
+    for (const row of (validRows ?? []) as Array<{
+      id: string;
+      full_name: string;
+    }>) {
+      validMap.set(
+        String(row.id),
+        String(row.full_name ?? "").trim() || "Usuário",
+      );
+    }
+
+    for (const id of requestedMentionIds) {
+      if (!validMap.has(id)) {
+        return {
+          ok: false,
+          message:
+            visibility === "INTERNAL"
+              ? "Comentários internos só podem mencionar Administradores e Editores."
+              : "Menção inválida: usuário não encontrado ou inativo.",
+        };
+      }
+    }
+
     pending = retainMentionsInContent(
       content,
-      valid.map((row) => ({
-        userId: String(row.id),
-        fullName: String(row.full_name ?? "").trim() || "Usuário",
+      requestedMentionIds.map((id) => ({
+        userId: id,
+        fullName: validMap.get(id)!,
       })),
     );
   }
@@ -336,6 +427,7 @@ export async function createFeatureComment(input: {
     user_id: userId,
     parent_comment_id: parentCommentId,
     content,
+    visibility,
   });
 
   if (error) return { ok: false, message: error.message };
@@ -350,7 +442,6 @@ export async function createFeatureComment(input: {
       .from("feature_comment_mentions")
       .insert(rows);
     if (mentionError) {
-      // Comentário já existe; remove para não deixar estado inconsistente.
       await supabase.from("feature_comments").delete().eq("id", id);
       return { ok: false, message: mentionError.message };
     }

@@ -38,6 +38,8 @@ export type Permission =
   | "need.delete"
   | "comment.create"
   | "comment.delete"
+  /** Ver/criar/responder comentários INTERNAL (admin/editor). */
+  | "comment.internal"
   | "taxonomy.manage"
   | "users.manage"
   | "settings.admin";
@@ -69,10 +71,12 @@ export const PERMISSION_MATRIX: Record<Permission, readonly UserRole[]> = {
   /** Criar necessidade a partir de Jornadas (operacional no código atual). */
   "need.create": ["editor", "admin"],
   "need.delete": ["editor", "admin"],
-  /** Comentários: todos os perfis autenticados podem criar/responder. */
+  /** Comentários públicos: todos os perfis autenticados podem criar/responder. */
   "comment.create": ["viewer", "editor", "admin"],
   /** Exclusão de comentários: somente Admin e Editor. */
   "comment.delete": ["editor", "admin"],
+  /** Comentários internos: somente Admin e Editor. */
+  "comment.internal": ["editor", "admin"],
   /** Taxonomias / Cadastros — somente Admin (UI /cadastros). */
   "taxonomy.manage": ["admin"],
   "users.manage": ["admin"],

@@ -20,6 +20,7 @@ import {
 import { useAuth } from "@/components/auth/auth-provider";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { ActionMenu } from "@/components/ui/action-menu";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   detectMentionQuery,
@@ -32,6 +33,14 @@ import {
   notifyFeatureCommentsChanged,
   subscribeFeatureCommentsChanged,
 } from "@/lib/comment-sync";
+import {
+  canCreateInternalComments,
+  canViewInternalComments,
+  emptyCommentsMessage,
+  filterCommentsByTab,
+  type CommentFilterTab,
+  type CommentVisibility,
+} from "@/lib/comment-visibility";
 import { roleCan } from "@/lib/permissions";
 import { cn, formatDateTime } from "@/lib/utils";
 import { MessageSquare } from "lucide-react";
@@ -51,6 +60,19 @@ function AuthorAvatar({ name }: { name: string }) {
     >
       {initials(name)}
     </span>
+  );
+}
+
+function VisibilityBadge({ visibility }: { visibility: CommentVisibility }) {
+  if (visibility === "INTERNAL") {
+    return (
+      <Badge className="bg-violet-50 text-violet-900 ring-violet-200">
+        Interno
+      </Badge>
+    );
+  }
+  return (
+    <Badge className="bg-slate-50 text-slate-700 ring-slate-200">Público</Badge>
   );
 }
 
@@ -75,6 +97,48 @@ function CommentBody({ comment }: { comment: FeatureCommentDTO }) {
   );
 }
 
+function VisibilitySelect({
+  value,
+  onChange,
+  locked,
+  disabled,
+}: {
+  value: CommentVisibility;
+  onChange: (v: CommentVisibility) => void;
+  locked?: boolean;
+  disabled?: boolean;
+}) {
+  const selectId = useId();
+  return (
+    <div className="space-y-1">
+      <label className="sr-only" htmlFor={selectId}>
+        Visibilidade do comentário
+      </label>
+      <select
+        id={selectId}
+        value={value}
+        disabled={disabled || locked}
+        onChange={(e) =>
+          onChange(
+            e.target.value === "INTERNAL" ? "INTERNAL" : "PUBLIC",
+          )
+        }
+        className="h-8 rounded-md border border-[var(--border)] bg-white px-2 text-xs font-medium text-slate-800 focus:border-[var(--brand)] focus:outline-none focus:ring-2 focus:ring-[var(--brand)]/20 disabled:cursor-not-allowed disabled:opacity-70"
+        title={
+          locked
+            ? "A resposta herda a visibilidade do comentário pai"
+            : undefined
+        }
+      >
+        <option value="PUBLIC">Público — visível para todos os usuários</option>
+        <option value="INTERNAL">
+          Interno — visível apenas para Editores e Administradores
+        </option>
+      </select>
+    </div>
+  );
+}
+
 function CommentComposer({
   placeholder,
   submitLabel,
@@ -82,16 +146,23 @@ function CommentComposer({
   pending,
   autoFocus,
   onCancel,
+  canChooseVisibility,
+  lockedVisibility,
+  defaultVisibility = "PUBLIC",
 }: {
   placeholder: string;
   submitLabel: string;
   onSubmit: (
     content: string,
     mentionedUserIds: string[],
+    visibility: CommentVisibility,
   ) => Promise<boolean>;
   pending: boolean;
   autoFocus?: boolean;
   onCancel?: () => void;
+  canChooseVisibility: boolean;
+  lockedVisibility?: CommentVisibility | null;
+  defaultVisibility?: CommentVisibility;
 }) {
   const listId = useId();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -103,7 +174,15 @@ function CommentComposer({
   const [activeIndex, setActiveIndex] = useState(0);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
+  const [visibility, setVisibility] = useState<CommentVisibility>(
+    lockedVisibility ?? defaultVisibility,
+  );
   const empty = !value.trim();
+  const effectiveVisibility = lockedVisibility ?? visibility;
+
+  useEffect(() => {
+    if (lockedVisibility) setVisibility(lockedVisibility);
+  }, [lockedVisibility]);
 
   const mentionState = useMemo(
     () => detectMentionQuery(value, cursor),
@@ -122,7 +201,10 @@ function CommentComposer({
     const handle = window.setTimeout(async () => {
       setSearching(true);
       setSearchError(null);
-      const result = await searchMentionableUsers(mentionState.query);
+      const result = await searchMentionableUsers(
+        mentionState.query,
+        effectiveVisibility,
+      );
       if (cancelled) return;
       setSearching(false);
       if (!("users" in result) || !result.ok) {
@@ -142,7 +224,7 @@ function CommentComposer({
       cancelled = true;
       window.clearTimeout(handle);
     };
-  }, [mentionState]);
+  }, [mentionState, effectiveVisibility]);
 
   function syncCursor() {
     const el = textareaRef.current;
@@ -177,6 +259,15 @@ function CommentComposer({
 
   return (
     <div className="relative space-y-2">
+      {canChooseVisibility ? (
+        <VisibilitySelect
+          value={effectiveVisibility}
+          onChange={setVisibility}
+          locked={Boolean(lockedVisibility)}
+          disabled={pending}
+        />
+      ) : null}
+
       <textarea
         ref={textareaRef}
         value={value}
@@ -296,12 +387,14 @@ function CommentComposer({
             const ok = await onSubmit(
               value.trim(),
               mentions.map((m) => m.userId),
+              effectiveVisibility,
             );
             if (ok) {
               setValue("");
               setPendingMentions([]);
               setMentionOpen(false);
               setCursor(0);
+              if (!lockedVisibility) setVisibility(defaultVisibility);
             }
           }}
         >
@@ -325,6 +418,8 @@ export function FeatureComments({
   const { role, userId } = useAuth();
   const canCreate = Boolean(userId) && roleCan(role, "comment.create");
   const canDelete = roleCan(role, "comment.delete");
+  const showInternal = canViewInternalComments(role);
+  const canChooseVisibility = canCreateInternalComments(role);
 
   const [comments, setComments] = useState<FeatureCommentDTO[]>([]);
   const [loading, setLoading] = useState(true);
@@ -333,7 +428,14 @@ export function FeatureComments({
   const [deleteTarget, setDeleteTarget] = useState<FeatureCommentDTO | null>(
     null,
   );
+  const [tab, setTab] = useState<CommentFilterTab>(
+    showInternal ? "all" : "public",
+  );
   const [pending, startTransition] = useTransition();
+
+  useEffect(() => {
+    if (!showInternal && tab !== "public") setTab("public");
+  }, [showInternal, tab]);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -369,14 +471,19 @@ export function FeatureComments({
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, [reload]);
 
+  const filtered = useMemo(
+    () => filterCommentsByTab(comments, tab, role),
+    [comments, tab, role],
+  );
+
   const roots = useMemo(
-    () => comments.filter((c) => !c.parentCommentId),
-    [comments],
+    () => filtered.filter((c) => !c.parentCommentId),
+    [filtered],
   );
 
   const repliesByParent = useMemo(() => {
     const map = new Map<string, FeatureCommentDTO[]>();
-    for (const c of comments) {
+    for (const c of filtered) {
       if (!c.parentCommentId) continue;
       const list = map.get(c.parentCommentId) ?? [];
       list.push(c);
@@ -386,13 +493,14 @@ export function FeatureComments({
       list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     }
     return map;
-  }, [comments]);
+  }, [filtered]);
 
   const totalCount = comments.length;
 
   async function handleCreate(
     content: string,
     mentionedUserIds: string[],
+    visibility: CommentVisibility,
     parentCommentId?: string | null,
   ): Promise<boolean> {
     return await new Promise((resolve) => {
@@ -402,6 +510,7 @@ export function FeatureComments({
           content,
           parentCommentId: parentCommentId ?? null,
           mentionedUserIds,
+          visibility,
         });
         if (!result.ok) {
           setError(result.message);
@@ -447,7 +556,8 @@ export function FeatureComments({
           <AuthorAvatar name={comment.authorName} />
           <div className="min-w-0 flex-1">
             <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
+              <div className="min-w-0 space-y-1">
+                <VisibilityBadge visibility={comment.visibility} />
                 <p className="truncate text-sm font-semibold text-slate-900">
                   {comment.authorName}
                 </p>
@@ -469,7 +579,8 @@ export function FeatureComments({
               ) : null}
             </div>
             <CommentBody comment={comment} />
-            {canCreate ? (
+            {canCreate &&
+            (comment.visibility === "PUBLIC" || showInternal) ? (
               <button
                 type="button"
                 className="mt-2 text-xs font-medium text-[var(--brand)] hover:underline"
@@ -490,8 +601,15 @@ export function FeatureComments({
                   pending={pending}
                   autoFocus
                   onCancel={() => setReplyToId(null)}
-                  onSubmit={(content, mentionedUserIds) =>
-                    handleCreate(content, mentionedUserIds, comment.id)
+                  canChooseVisibility={canChooseVisibility}
+                  lockedVisibility={comment.visibility}
+                  onSubmit={(content, mentionedUserIds, visibility) =>
+                    handleCreate(
+                      content,
+                      mentionedUserIds,
+                      visibility,
+                      comment.id,
+                    )
                   }
                 />
               </div>
@@ -506,6 +624,14 @@ export function FeatureComments({
       </li>
     );
   }
+
+  const tabs: Array<{ id: CommentFilterTab; label: string }> = showInternal
+    ? [
+        { id: "all", label: "Todos" },
+        { id: "public", label: "Públicos" },
+        { id: "internal", label: "Internos" },
+      ]
+    : [{ id: "public", label: "Públicos" }];
 
   return (
     <section className={cn("space-y-4", className)}>
@@ -523,13 +649,35 @@ export function FeatureComments({
         </h2>
       </div>
 
+      <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Filtro de comentários">
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            aria-selected={tab === t.id}
+            className={cn(
+              "rounded-full px-3 py-1 text-xs font-semibold transition-colors",
+              tab === t.id
+                ? "bg-slate-900 text-white"
+                : "bg-slate-100 text-slate-600 hover:bg-slate-200",
+            )}
+            onClick={() => setTab(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
       {canCreate ? (
         <CommentComposer
           placeholder="Adicione um comentário... Use @ para mencionar"
           submitLabel="Comentar"
           pending={pending}
-          onSubmit={(content, mentionedUserIds) =>
-            handleCreate(content, mentionedUserIds)
+          canChooseVisibility={canChooseVisibility}
+          defaultVisibility="PUBLIC"
+          onSubmit={(content, mentionedUserIds, visibility) =>
+            handleCreate(content, mentionedUserIds, visibility)
           }
         />
       ) : (
@@ -553,7 +701,7 @@ export function FeatureComments({
         <div className="rounded-xl border border-dashed border-[var(--border)] bg-slate-50/60 px-4 py-8 text-center">
           <MessageSquare className="mx-auto h-7 w-7 text-slate-300" />
           <p className="mt-3 text-sm font-semibold text-slate-800">
-            Nenhum comentário ainda
+            {emptyCommentsMessage(tab, role)}
           </p>
           <p className="mx-auto mt-1 max-w-md text-xs text-slate-500">
             Adicione um comentário para registrar uma dúvida, decisão ou
