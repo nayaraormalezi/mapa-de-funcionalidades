@@ -773,7 +773,12 @@ export function JornadasClient({
                 setTab("needs");
               }}
             >
-              <input type="hidden" name="journey_id" value={journey.id} />
+              <input
+                type="hidden"
+                name="journey_id"
+                value={journey.catalogJourneyId ?? ""}
+              />
+              <input type="hidden" name="journey_stage_id" value={journey.id} />
               <Field label="Nome" name="name" required />
               <AudienceMultiSelect
                 required

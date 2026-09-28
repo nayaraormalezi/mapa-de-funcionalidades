@@ -734,10 +734,29 @@ export async function upsertUserNeed(formData: FormData): Promise<ActionResult> 
         .filter(Boolean)
     : [];
 
+  const supabase = await createClient();
+
+  // Compat: o modal de Jornadas às vezes enviava o id da etapa em journey_id.
+  // Resolve etapa → jornada do catálogo antes do upsert (FK user_needs_journey_id_fkey).
+  let resolvedJourneyId = journeyId;
+  let resolvedStageId = journeyStageId;
+  const stageLookupId = journeyStageId || journeyId;
+  if (stageLookupId) {
+    const { data: stage } = await supabase
+      .from("journey_stages")
+      .select("id, journey_id")
+      .eq("id", stageLookupId)
+      .maybeSingle();
+    if (stage?.journey_id) {
+      resolvedJourneyId = stage.journey_id;
+      resolvedStageId = stage.id;
+    }
+  }
+
   const payload = {
     id,
-    journey_id: journeyId,
-    journey_stage_id: journeyStageId,
+    journey_id: resolvedJourneyId,
+    journey_stage_id: resolvedStageId,
     product_id: productIds[0] ?? resolveProductId(null),
     product_ids: productIds,
     audience_ids: audienceIds,
@@ -759,7 +778,6 @@ export async function upsertUserNeed(formData: FormData): Promise<ActionResult> 
     };
   }
 
-  const supabase = await createClient();
   const { error } = await supabase.from("user_needs").upsert(payload);
   if (error) return { ok: false, message: error.message };
 
