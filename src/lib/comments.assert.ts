@@ -205,7 +205,27 @@ assert(
 );
 
 // --- Menções ---
-assert(detectMentionQuery("oi @mar", 7)?.query === "mar", "detect @query");
+assert(detectMentionQuery("@", 1)?.query === "", "@ alone opens");
+assert(detectMentionQuery("@mar", 4)?.query === "mar", "@mar filters");
+assert(
+  detectMentionQuery("Precisamos falar com @", 22)?.query === "",
+  "@ mid sentence",
+);
+assert(
+  detectMentionQuery("Precisamos falar com @mar", 25)?.query === "mar",
+  "@mar mid sentence",
+);
+assert(
+  detectMentionQuery("Precisamos revisar isso. @mar", 29)?.query === "mar",
+  "@ after punctuation+space",
+);
+assert(
+  detectMentionQuery("Olá,@mar", 8)?.query === "mar",
+  "@ after punctuation",
+);
+assert(detectMentionQuery("email@empresa.com", 6) === null, "email no mention");
+assert(detectMentionQuery("oi@mar", 6) === null, "mid-token no mention");
+
 const inserted = insertMentionAt("Precisamos @mar revisar", 15, {
   id: "u1",
   fullName: "Mariana Silva",
@@ -214,16 +234,53 @@ assert(
   inserted.text === "Precisamos @Mariana Silva revisar",
   "insert at cursor position",
 );
+assert(inserted.cursor === "Precisamos @Mariana Silva".length + 1, "cursor after mention+space");
+
+const withAfter = insertMentionAt("falar com @mar amanhã", 14, {
+  id: "u1",
+  fullName: "Mariana Silva",
+});
+assert(
+  withAfter.text === "falar com @Mariana Silva amanhã",
+  "preserve text after mention",
+);
+
+const multiA = insertMentionAt("@", 1, { id: "u1", fullName: "Mariana Silva" });
+const multiB = insertMentionAt(
+  `${multiA.text}e @car`,
+  `${multiA.text}e @car`.length,
+  { id: "u2", fullName: "Carlos Oliveira" },
+);
+assert(multiB.text.includes("@Mariana Silva"), "first mention kept");
+assert(multiB.text.includes("@Carlos Oliveira"), "second mention inserted");
 
 const cleared = retainMentionsInContent("sem menção", [
   { userId: "u1", fullName: "Mariana Silva" },
 ]);
 assert(cleared.length === 0, "removing @text drops mention before send");
 
+const partial = retainMentionsInContent("@Mariana", [
+  { userId: "u1", fullName: "Mariana Silva" },
+]);
+assert(partial.length === 0, "incomplete mention token drops relation");
+
+const dup = retainMentionsInContent(
+  "@Mariana Silva e @Mariana Silva",
+  [
+    { userId: "u1", fullName: "Mariana Silva" },
+    { userId: "u1", fullName: "Mariana Silva" },
+  ],
+);
+assert(dup.length === 1, "dedupe same user mention");
+
 const segments = segmentCommentContent("@Mariana Silva precisa revisar", [
   { userId: "u1", fullName: "Mariana Silva" },
 ]);
 assert(segments[0]?.type === "mention", "render mention segment");
+assert(
+  segments[0]?.type === "mention" && segments[0].userId === "u1",
+  "mention bound to user id",
+);
 
 assert(countComments(mixed) === 5, "raw count helpers");
 

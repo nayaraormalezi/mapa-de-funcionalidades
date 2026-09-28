@@ -4,11 +4,13 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   useTransition,
 } from "react";
+import { createPortal } from "react-dom";
 import {
   createFeatureComment,
   deleteFeatureComment,
@@ -24,9 +26,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   detectMentionQuery,
+  getTextareaCaretClientRect,
   insertMentionAt,
   retainMentionsInContent,
   segmentCommentContent,
+  type MentionQueryState,
   type PendingMention,
 } from "@/lib/comment-mentions";
 import {
@@ -43,7 +47,7 @@ import {
 } from "@/lib/comment-visibility";
 import { roleCan } from "@/lib/permissions";
 import { cn, formatDateTime } from "@/lib/utils";
-import { MessageSquare } from "lucide-react";
+import { Globe2, Lock, MessageSquare, Reply } from "lucide-react";
 
 function initials(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -66,14 +70,24 @@ function AuthorAvatar({ name }: { name: string }) {
 function VisibilityBadge({ visibility }: { visibility: CommentVisibility }) {
   if (visibility === "INTERNAL") {
     return (
-      <Badge className="bg-violet-50 text-violet-900 ring-violet-200">
+      <Badge className="inline-flex items-center gap-1 bg-violet-50 text-violet-900 ring-violet-200">
+        <Lock className="h-3 w-3" aria-hidden />
         Interno
       </Badge>
     );
   }
   return (
-    <Badge className="bg-slate-50 text-slate-700 ring-slate-200">Público</Badge>
+    <Badge className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-800 ring-emerald-200">
+      <Globe2 className="h-3 w-3" aria-hidden />
+      Público
+    </Badge>
   );
+}
+
+function visibilityDescription(visibility: CommentVisibility) {
+  return visibility === "INTERNAL"
+    ? "Visível apenas para Editores e Administradores"
+    : "Visível para todos os usuários";
 }
 
 function CommentBody({ comment }: { comment: FeatureCommentDTO }) {
@@ -97,44 +111,95 @@ function CommentBody({ comment }: { comment: FeatureCommentDTO }) {
   );
 }
 
-function VisibilitySelect({
+/**
+ * Propriedade do novo comentário — visual distinto das tabs de filtro da lista.
+ * Não reutiliza SegmentedControl genérico (mesmo padrão das views/filtros).
+ */
+function CommentVisibilityControl({
   value,
   onChange,
+  allowInternal,
   locked,
   disabled,
 }: {
   value: CommentVisibility;
   onChange: (v: CommentVisibility) => void;
+  allowInternal: boolean;
   locked?: boolean;
   disabled?: boolean;
 }) {
-  const selectId = useId();
+  const groupId = useId();
+  const descriptionId = `${groupId}-desc`;
+
+  if (locked) {
+    return (
+      <div className="space-y-1.5">
+        <p className="text-xs font-medium text-slate-500">
+          Visibilidade do comentário
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <VisibilityBadge visibility={value} />
+          <span className="text-xs text-slate-500">
+            Herdada do comentário pai
+          </span>
+        </div>
+        <p id={descriptionId} className="text-xs text-slate-500">
+          {visibilityDescription(value)}
+        </p>
+      </div>
+    );
+  }
+
+  const options: Array<{
+    id: CommentVisibility;
+    label: string;
+    Icon: typeof Globe2;
+  }> = allowInternal
+    ? [
+        { id: "PUBLIC", label: "Público", Icon: Globe2 },
+        { id: "INTERNAL", label: "Interno", Icon: Lock },
+      ]
+    : [{ id: "PUBLIC", label: "Público", Icon: Globe2 }];
+
   return (
-    <div className="space-y-1">
-      <label className="sr-only" htmlFor={selectId}>
+    <div className="space-y-1.5">
+      <p id={groupId} className="text-xs font-medium text-slate-500">
         Visibilidade do comentário
-      </label>
-      <select
-        id={selectId}
-        value={value}
-        disabled={disabled || locked}
-        onChange={(e) =>
-          onChange(
-            e.target.value === "INTERNAL" ? "INTERNAL" : "PUBLIC",
-          )
-        }
-        className="h-8 rounded-md border border-[var(--border)] bg-white px-2 text-xs font-medium text-slate-800 focus:border-[var(--brand)] focus:outline-none focus:ring-2 focus:ring-[var(--brand)]/20 disabled:cursor-not-allowed disabled:opacity-70"
-        title={
-          locked
-            ? "A resposta herda a visibilidade do comentário pai"
-            : undefined
-        }
+      </p>
+      <div
+        role="radiogroup"
+        aria-labelledby={groupId}
+        aria-describedby={descriptionId}
+        className="flex flex-wrap gap-2"
       >
-        <option value="PUBLIC">Público — visível para todos os usuários</option>
-        <option value="INTERNAL">
-          Interno — visível apenas para Editores e Administradores
-        </option>
-      </select>
+        {options.map(({ id, label, Icon }) => {
+          const selected = value === id;
+          return (
+            <button
+              key={id}
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              disabled={disabled}
+              onClick={() => onChange(id)}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)]/30 disabled:opacity-60",
+                selected
+                  ? id === "INTERNAL"
+                    ? "border-violet-300 bg-violet-50 text-violet-900"
+                    : "border-sky-300 bg-sky-50 text-sky-800"
+                  : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50",
+              )}
+            >
+              <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              {label}
+            </button>
+          );
+        })}
+      </div>
+      <p id={descriptionId} className="text-xs text-slate-500">
+        {visibilityDescription(value)}
+      </p>
     </div>
   );
 }
@@ -165,7 +230,12 @@ function CommentComposer({
   defaultVisibility?: CommentVisibility;
 }) {
   const listId = useId();
+  const optionIdPrefix = useId();
+  const rootRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const searchSeq = useRef(0);
+
   const [value, setValue] = useState("");
   const [cursor, setCursor] = useState(0);
   const [pendingMentions, setPendingMentions] = useState<PendingMention[]>([]);
@@ -174,6 +244,11 @@ function CommentComposer({
   const [activeIndex, setActiveIndex] = useState(0);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
+  const [dropdownPos, setDropdownPos] = useState<{
+    top: number;
+    left: number;
+    width: number;
+  } | null>(null);
   const [visibility, setVisibility] = useState<CommentVisibility>(
     lockedVisibility ?? defaultVisibility,
   );
@@ -189,50 +264,106 @@ function CommentComposer({
     [value, cursor],
   );
 
+  const syncCaretFromDom = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    setCursor(el.selectionStart ?? el.value.length);
+  }, []);
+
+  const updateDropdownPosition = useCallback((state: MentionQueryState | null) => {
+    const el = textareaRef.current;
+    if (!el || !state) {
+      setDropdownPos(null);
+      return;
+    }
+    const caret = getTextareaCaretClientRect(el, state.atIndex);
+    const box = el.getBoundingClientRect();
+    const width = Math.min(320, Math.max(220, box.width));
+    let left = Math.min(caret.left, box.right - width);
+    left = Math.max(8, Math.min(left, window.innerWidth - width - 8));
+    let top = caret.bottom + 6;
+    const estimatedHeight = 220;
+    if (top + estimatedHeight > window.innerHeight - 8) {
+      top = Math.max(8, caret.top - estimatedHeight - 6);
+    }
+    setDropdownPos({ top, left, width });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!mentionState) {
+      setDropdownPos(null);
+      return;
+    }
+    updateDropdownPosition(mentionState);
+  }, [mentionState, value, updateDropdownPosition]);
+
   useEffect(() => {
     if (!mentionState) {
       setMentionOpen(false);
       setSuggestions([]);
       setSearchError(null);
+      setSearching(false);
       return;
     }
 
-    let cancelled = false;
+    // Abre imediatamente ao detectar @ (mostra loading).
+    setMentionOpen(true);
+    setSearching(true);
+    setSearchError(null);
+
+    const seq = ++searchSeq.current;
+    const query = mentionState.query;
     const handle = window.setTimeout(async () => {
-      setSearching(true);
-      setSearchError(null);
-      const result = await searchMentionableUsers(
-        mentionState.query,
-        effectiveVisibility,
-      );
-      if (cancelled) return;
+      const result = await searchMentionableUsers(query, effectiveVisibility);
+      if (seq !== searchSeq.current) return;
       setSearching(false);
       if (!("users" in result) || !result.ok) {
         setSuggestions([]);
         setSearchError(
-          "message" in result ? result.message : "Falha ao buscar usuários.",
+          "message" in result
+            ? result.message
+            : "Não foi possível carregar os usuários.",
         );
-        setMentionOpen(true);
         return;
       }
       setSuggestions(result.users);
       setActiveIndex(0);
-      setMentionOpen(true);
+      setSearchError(null);
     }, 120);
 
     return () => {
-      cancelled = true;
       window.clearTimeout(handle);
     };
   }, [mentionState, effectiveVisibility]);
 
-  function syncCursor() {
-    const el = textareaRef.current;
-    if (el) setCursor(el.selectionStart ?? value.length);
-  }
+  useEffect(() => {
+    if (!mentionOpen) return;
+
+    function onPointerDown(event: MouseEvent) {
+      const target = event.target as Node;
+      if (rootRef.current?.contains(target)) return;
+      if (dropdownRef.current?.contains(target)) return;
+      setMentionOpen(false);
+    }
+
+    function onReposition() {
+      if (mentionState) updateDropdownPosition(mentionState);
+    }
+
+    document.addEventListener("mousedown", onPointerDown);
+    window.addEventListener("resize", onReposition);
+    window.addEventListener("scroll", onReposition, true);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      window.removeEventListener("resize", onReposition);
+      window.removeEventListener("scroll", onReposition, true);
+    };
+  }, [mentionOpen, mentionState, updateDropdownPosition]);
 
   function applyMention(user: MentionableUserDTO) {
-    const result = insertMentionAt(value, cursor, {
+    const el = textareaRef.current;
+    const caret = el?.selectionStart ?? cursor;
+    const result = insertMentionAt(value, caret, {
       id: user.id,
       fullName: user.fullName,
       email: user.email,
@@ -244,42 +375,52 @@ function CommentComposer({
     );
     setMentionOpen(false);
     setSuggestions([]);
+    setSearchError(null);
+    searchSeq.current += 1;
     requestAnimationFrame(() => {
-      const el = textareaRef.current;
-      if (!el) return;
-      el.focus();
-      el.setSelectionRange(result.cursor, result.cursor);
+      const field = textareaRef.current;
+      if (!field) return;
+      field.focus();
+      field.setSelectionRange(result.cursor, result.cursor);
+      setCursor(result.cursor);
     });
   }
 
-  function onChangeValue(next: string) {
+  function onChangeValue(next: string, nextCursor: number) {
     setValue(next);
+    setCursor(nextCursor);
     setPendingMentions((prev) => retainMentionsInContent(next, prev));
   }
 
+  const showDropdown = mentionOpen && Boolean(mentionState) && Boolean(dropdownPos);
+
   return (
-    <div className="relative space-y-2">
-      {canChooseVisibility ? (
-        <VisibilitySelect
-          value={effectiveVisibility}
-          onChange={setVisibility}
-          locked={Boolean(lockedVisibility)}
-          disabled={pending}
-        />
-      ) : null}
+    <div
+      ref={rootRef}
+      className="relative space-y-3 rounded-xl border border-[var(--border)] bg-white p-3 sm:p-4"
+    >
+      <CommentVisibilityControl
+        value={effectiveVisibility}
+        onChange={setVisibility}
+        allowInternal={canChooseVisibility && !lockedVisibility}
+        locked={Boolean(lockedVisibility)}
+        disabled={pending}
+      />
 
       <textarea
         ref={textareaRef}
         value={value}
         onChange={(e) => {
-          onChangeValue(e.target.value);
-          setCursor(e.target.selectionStart ?? e.target.value.length);
+          onChangeValue(
+            e.target.value,
+            e.target.selectionStart ?? e.target.value.length,
+          );
         }}
-        onClick={syncCursor}
-        onKeyUp={syncCursor}
-        onSelect={syncCursor}
+        onClick={syncCaretFromDom}
+        onKeyUp={syncCaretFromDom}
+        onSelect={syncCaretFromDom}
         onKeyDown={(e) => {
-          if (!mentionOpen) return;
+          if (!mentionOpen || !mentionState) return;
           if (e.key === "ArrowDown") {
             e.preventDefault();
             setActiveIndex((i) =>
@@ -296,7 +437,10 @@ function CommentComposer({
             );
             return;
           }
-          if (e.key === "Enter" && suggestions[activeIndex]) {
+          if (
+            (e.key === "Enter" || e.key === "Tab") &&
+            suggestions[activeIndex]
+          ) {
             e.preventDefault();
             applyMention(suggestions[activeIndex]!);
             return;
@@ -304,6 +448,7 @@ function CommentComposer({
           if (e.key === "Escape") {
             e.preventDefault();
             setMentionOpen(false);
+            searchSeq.current += 1;
           }
         }}
         placeholder={placeholder}
@@ -311,60 +456,83 @@ function CommentComposer({
         autoFocus={autoFocus}
         disabled={pending}
         aria-autocomplete="list"
-        aria-controls={mentionOpen ? listId : undefined}
-        aria-expanded={mentionOpen}
+        aria-controls={showDropdown ? listId : undefined}
+        aria-expanded={showDropdown}
+        aria-activedescendant={
+          showDropdown && suggestions[activeIndex]
+            ? `${optionIdPrefix}-${suggestions[activeIndex]!.id}`
+            : undefined
+        }
         className="w-full resize-y rounded-lg border border-[var(--border)] bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-[var(--brand)] focus:outline-none focus:ring-2 focus:ring-[var(--brand)]/20 disabled:opacity-60"
       />
 
-      {mentionOpen ? (
-        <div
-          id={listId}
-          role="listbox"
-          className="absolute z-20 mt-1 w-full max-w-sm overflow-hidden rounded-lg border border-[var(--border)] bg-white shadow-lg"
-        >
-          {searching ? (
-            <p className="px-3 py-2 text-xs text-slate-500">Buscando…</p>
-          ) : searchError ? (
-            <p className="px-3 py-2 text-xs text-rose-600">{searchError}</p>
-          ) : suggestions.length === 0 ? (
-            <p className="px-3 py-2 text-xs text-slate-500">
-              Nenhum usuário encontrado
-            </p>
-          ) : (
-            <ul className="max-h-48 overflow-y-auto py-1">
-              {suggestions.map((user, index) => (
-                <li key={user.id}>
-                  <button
-                    type="button"
-                    role="option"
-                    aria-selected={index === activeIndex}
-                    className={cn(
-                      "flex w-full items-center gap-2 px-3 py-2 text-left text-sm",
-                      index === activeIndex
-                        ? "bg-sky-50 text-sky-900"
-                        : "text-slate-800 hover:bg-slate-50",
-                    )}
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => applyMention(user)}
-                  >
-                    <AuthorAvatar name={user.fullName} />
-                    <span className="min-w-0">
-                      <span className="block truncate font-medium">
-                        {user.fullName}
-                      </span>
-                      {user.email ? (
-                        <span className="block truncate text-xs text-slate-500">
-                          {user.email}
+      {showDropdown && dropdownPos
+        ? createPortal(
+            <div
+              ref={dropdownRef}
+              id={listId}
+              role="listbox"
+              aria-label="Usuários para mencionar"
+              style={{
+                position: "fixed",
+                top: dropdownPos.top,
+                left: dropdownPos.left,
+                width: dropdownPos.width,
+                zIndex: 200,
+              }}
+              className="overflow-hidden rounded-lg border border-[var(--border)] bg-white shadow-xl"
+            >
+              {searching ? (
+                <p className="px-3 py-2.5 text-xs text-slate-500">
+                  Buscando usuários...
+                </p>
+              ) : searchError ? (
+                <p className="px-3 py-2.5 text-xs text-rose-600">
+                  Não foi possível carregar os usuários.
+                </p>
+              ) : suggestions.length === 0 ? (
+                <p className="px-3 py-2.5 text-xs text-slate-500">
+                  Nenhum usuário encontrado
+                </p>
+              ) : (
+                <ul className="max-h-56 overflow-y-auto py-1">
+                  {suggestions.map((user, index) => (
+                    <li key={user.id}>
+                      <button
+                        type="button"
+                        id={`${optionIdPrefix}-${user.id}`}
+                        role="option"
+                        aria-selected={index === activeIndex}
+                        className={cn(
+                          "flex w-full items-center gap-2 px-3 py-2 text-left text-sm",
+                          index === activeIndex
+                            ? "bg-sky-50 text-sky-900"
+                            : "text-slate-800 hover:bg-slate-50",
+                        )}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onMouseEnter={() => setActiveIndex(index)}
+                        onClick={() => applyMention(user)}
+                      >
+                        <AuthorAvatar name={user.fullName} />
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium">
+                            {user.fullName}
+                          </span>
+                          {user.email ? (
+                            <span className="block truncate text-xs text-slate-500">
+                              {user.email}
+                            </span>
+                          ) : null}
                         </span>
-                      ) : null}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      ) : null}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>,
+            document.body,
+          )
+        : null}
 
       <div className="flex flex-wrap items-center justify-end gap-2">
         {onCancel ? (
@@ -394,6 +562,7 @@ function CommentComposer({
               setPendingMentions([]);
               setMentionOpen(false);
               setCursor(0);
+              searchSeq.current += 1;
               if (!lockedVisibility) setVisibility(defaultVisibility);
             }
           }}
@@ -556,12 +725,14 @@ export function FeatureComments({
           <AuthorAvatar name={comment.authorName} />
           <div className="min-w-0 flex-1">
             <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0 space-y-1">
-                <VisibilityBadge visibility={comment.visibility} />
-                <p className="truncate text-sm font-semibold text-slate-900">
-                  {comment.authorName}
-                </p>
-                <p className="text-xs text-slate-500">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="truncate text-sm font-semibold text-slate-900">
+                    {comment.authorName}
+                  </p>
+                  <VisibilityBadge visibility={comment.visibility} />
+                </div>
+                <p className="mt-0.5 text-xs text-slate-500">
                   {formatDateTime(comment.createdAt)}
                 </p>
               </div>
@@ -583,13 +754,14 @@ export function FeatureComments({
             (comment.visibility === "PUBLIC" || showInternal) ? (
               <button
                 type="button"
-                className="mt-2 text-xs font-medium text-[var(--brand)] hover:underline"
+                className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-[var(--brand)]"
                 onClick={() =>
                   setReplyToId((current) =>
                     current === comment.id ? null : comment.id,
                   )
                 }
               >
+                <Reply className="h-3.5 w-3.5" aria-hidden />
                 Responder
               </button>
             ) : null}

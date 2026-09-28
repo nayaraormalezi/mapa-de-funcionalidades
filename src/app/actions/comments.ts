@@ -261,11 +261,18 @@ export async function searchMentionableUsers(
   }
 
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("search_mentionable_profiles", {
-    q,
-    lim: 8,
-    allowed_roles: roles,
-  });
+  const rpcArgs: {
+    q: string;
+    lim: number;
+    allowed_roles?: UserRole[];
+  } = { q, lim: 8 };
+  // Omitir null: PostgREST/Supabase às vezes falha com text[] = null explícito.
+  if (roles) rpcArgs.allowed_roles = roles;
+
+  const { data, error } = await supabase.rpc(
+    "search_mentionable_profiles",
+    rpcArgs,
+  );
 
   if (error) return { ok: false, message: error.message };
 
@@ -384,7 +391,9 @@ export async function createFeatureComment(input: {
   if (requestedMentionIds.length) {
     const { data: validRows, error: validError } = await supabase.rpc(
       "filter_mentionable_user_ids",
-      { ids: requestedMentionIds, allowed_roles: roles },
+      roles
+        ? { ids: requestedMentionIds, allowed_roles: roles }
+        : { ids: requestedMentionIds },
     );
     if (validError) return { ok: false, message: validError.message };
 

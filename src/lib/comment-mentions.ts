@@ -32,13 +32,16 @@ export function detectMentionQuery(
   const at = before.lastIndexOf("@");
   if (at < 0) return null;
 
+  // Bloqueia email/palavra (@ no meio): só abre após início, espaço ou pontuação.
   if (at > 0) {
     const prev = before[at - 1]!;
-    if (!/\s/.test(prev)) return null;
+    if (/[\p{L}\p{N}_@]/u.test(prev)) return null;
   }
 
   const query = before.slice(at + 1);
   if (/\s/.test(query)) return null;
+  // Query longa demais → provavelmente não é menção em digitação.
+  if (query.length > 64) return null;
   return { atIndex: at, query };
 }
 
@@ -48,25 +51,20 @@ export function insertMentionAt(
   cursor: number,
   mention: MentionCandidate,
 ): { text: string; cursor: number; pending: PendingMention } {
-  const active = detectMentionQuery(text, cursor);
-  if (!active) {
-    const token = `@${mention.fullName}`;
-    const next = `${text.slice(0, cursor)}${token} ${text.slice(cursor)}`;
-    return {
-      text: next,
-      cursor: cursor + token.length + 1,
-      pending: { userId: mention.id, fullName: mention.fullName },
-    };
-  }
-
   const token = `@${mention.fullName}`;
-  const afterCursor = text.slice(cursor);
-  const spacer = afterCursor.startsWith(" ") || afterCursor.length === 0 ? "" : " ";
-  const next = `${text.slice(0, active.atIndex)}${token}${spacer}${afterCursor}`;
+  const pending: PendingMention = {
+    userId: mention.id,
+    fullName: mention.fullName,
+  };
+  const active = detectMentionQuery(text, cursor);
+  const start = active ? active.atIndex : cursor;
+  const after = text.slice(cursor);
+  const rest = after.startsWith(" ") ? after.slice(1) : after;
+  const next = `${text.slice(0, start)}${token} ${rest}`;
   return {
     text: next,
-    cursor: active.atIndex + token.length + spacer.length,
-    pending: { userId: mention.id, fullName: mention.fullName },
+    cursor: start + token.length + 1,
+    pending,
   };
 }
 
@@ -164,4 +162,83 @@ export function countComments(
  */
 export function syncCommentsFromSource<T>(source: T[]): T[] {
   return source.map((item) => item);
+}
+
+/**
+ * Posição do caret de um textarea no viewport (para ancorar o dropdown de @).
+ */
+export function getTextareaCaretClientRect(
+  textarea: HTMLTextAreaElement,
+  position: number,
+): { top: number; left: number; height: number; bottom: number } {
+  const style = window.getComputedStyle(textarea);
+  const mirror = document.createElement("div");
+  const properties = [
+    "direction",
+    "boxSizing",
+    "width",
+    "height",
+    "overflowX",
+    "overflowY",
+    "borderTopWidth",
+    "borderRightWidth",
+    "borderBottomWidth",
+    "borderLeftWidth",
+    "paddingTop",
+    "paddingRight",
+    "paddingBottom",
+    "paddingLeft",
+    "fontStyle",
+    "fontVariant",
+    "fontWeight",
+    "fontStretch",
+    "fontSize",
+    "fontSizeAdjust",
+    "lineHeight",
+    "fontFamily",
+    "textAlign",
+    "textTransform",
+    "textIndent",
+    "textDecoration",
+    "letterSpacing",
+    "wordSpacing",
+    "tabSize",
+    "MozTabSize",
+    "whiteSpace",
+    "wordBreak",
+    "wordWrap",
+  ] as const;
+
+  mirror.setAttribute("aria-hidden", "true");
+  mirror.style.position = "absolute";
+  mirror.style.top = "0";
+  mirror.style.left = "-9999px";
+  mirror.style.visibility = "hidden";
+  mirror.style.whiteSpace = "pre-wrap";
+  mirror.style.wordWrap = "break-word";
+  for (const prop of properties) {
+    mirror.style.setProperty(prop, style.getPropertyValue(prop));
+  }
+  mirror.style.width = `${textarea.clientWidth}px`;
+
+  const safePos = Math.max(0, Math.min(position, textarea.value.length));
+  mirror.textContent = textarea.value.slice(0, safePos);
+  const marker = document.createElement("span");
+  marker.textContent = textarea.value.slice(safePos) || "\u200b";
+  mirror.appendChild(marker);
+  document.body.appendChild(mirror);
+
+  const textareaRect = textarea.getBoundingClientRect();
+  const top =
+    textareaRect.top +
+    (marker.offsetTop - textarea.scrollTop) +
+    Number.parseFloat(style.borderTopWidth || "0");
+  const left =
+    textareaRect.left +
+    (marker.offsetLeft - textarea.scrollLeft) +
+    Number.parseFloat(style.borderLeftWidth || "0");
+  const height = marker.offsetHeight || Number.parseFloat(style.lineHeight) || 18;
+  document.body.removeChild(mirror);
+
+  return { top, left, height, bottom: top + height };
 }
