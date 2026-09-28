@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { upsertFeatureEvolution } from "@/app/actions/crud";
+import { FeatureComments } from "@/components/feature/feature-comments";
 import { StageBadge } from "@/components/badges/stage-badge";
 import { PriorityBadge } from "@/components/badges/priority-badge";
 import { Button } from "@/components/ui/button";
@@ -226,6 +227,8 @@ export function RoadmapFeatureDrawer({
               </ul>
             )}
           </div>
+
+          <FeatureComments featureId={featureId} compact />
         </div>
       </aside>
     </div>

@@ -36,6 +36,8 @@ export type Permission =
   | "journey.edit"
   | "need.create"
   | "need.delete"
+  | "comment.create"
+  | "comment.delete"
   | "taxonomy.manage"
   | "users.manage"
   | "settings.admin";
@@ -67,6 +69,10 @@ export const PERMISSION_MATRIX: Record<Permission, readonly UserRole[]> = {
   /** Criar necessidade a partir de Jornadas (operacional no código atual). */
   "need.create": ["editor", "admin"],
   "need.delete": ["editor", "admin"],
+  /** Comentários: todos os perfis autenticados podem criar/responder. */
+  "comment.create": ["viewer", "editor", "admin"],
+  /** Exclusão de comentários: somente Admin e Editor. */
+  "comment.delete": ["editor", "admin"],
   /** Taxonomias / Cadastros — somente Admin (UI /cadastros). */
   "taxonomy.manage": ["admin"],
   "users.manage": ["admin"],

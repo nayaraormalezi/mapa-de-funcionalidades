@@ -33,6 +33,12 @@ for (const p of operational) {
 }
 
 assert(roleCan("viewer", "view"), "viewer can view");
+assert(roleCan("viewer", "comment.create"), "viewer can comment");
+assert(roleCan("editor", "comment.create"), "editor can comment");
+assert(roleCan("admin", "comment.create"), "admin can comment");
+assert(!roleCan("viewer", "comment.delete"), "viewer !delete comment");
+assert(roleCan("editor", "comment.delete"), "editor delete comment");
+assert(roleCan("admin", "comment.delete"), "admin delete comment");
 assert(!roleCanEdit("viewer"), "viewer !canEdit");
 assert(roleCanEdit("editor"), "editor canEdit");
 assert(roleCanEdit("admin"), "admin canEdit");

@@ -14,6 +14,7 @@ import {
   HealthGlance,
   type EvaluationLaunchRequest,
 } from "@/components/feature/channel-intelligence";
+import { FeatureComments } from "@/components/feature/feature-comments";
 import {
   ContextEditModal,
   EvidenceEditModal,
@@ -1187,6 +1188,8 @@ export function FeatureSheet({
           </ul>
         )}
       </section>
+
+      <FeatureComments featureId={feature.id} />
 
       {lightboxSrc ? (
         <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">

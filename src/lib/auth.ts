@@ -123,6 +123,19 @@ export async function getAuthState(): Promise<AuthState> {
   });
 }
 
+export async function requireAuthenticated(): Promise<
+  { ok: true; auth: AuthState } | { ok: false; message: string }
+> {
+  const auth = await getAuthState();
+  if (!auth.userId) {
+    return {
+      ok: false,
+      message: "É necessário estar autenticado para continuar.",
+    };
+  }
+  return { ok: true, auth };
+}
+
 export async function requireCanEdit(): Promise<
   { ok: true; auth: AuthState } | { ok: false; message: string }
 > {
