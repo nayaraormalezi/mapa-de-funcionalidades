@@ -29,6 +29,7 @@ import {
   GlobalSearchBar,
   type GlobalSearchItem,
 } from "@/components/layout/global-search";
+import { NotificationBell } from "@/components/notifications/notification-bell";
 
 type NavBadge = { type: "count"; value: number } | { type: "new" };
 
@@ -313,6 +314,8 @@ export function AppShell({
               Modo demonstração
             </span>
           ) : null}
+
+          <NotificationBell />
 
           <div className="relative shrink-0">
             <button

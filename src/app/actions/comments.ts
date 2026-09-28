@@ -327,7 +327,7 @@ export async function createFeatureComment(input: {
 
   const { data: feature, error: featureError } = await supabase
     .from("features")
-    .select("id")
+    .select("id, name")
     .eq("id", featureId)
     .eq("active", true)
     .maybeSingle();
@@ -336,11 +336,12 @@ export async function createFeatureComment(input: {
 
   let parentCommentId: string | null = null;
   let parentVisibility: CommentVisibility | null = null;
+  let parentAuthorUserId: string | null = null;
 
   if (parentRaw) {
     const { data: parent, error: parentError } = await supabase
       .from("feature_comments")
-      .select("id, feature_id, parent_comment_id, visibility")
+      .select("id, feature_id, parent_comment_id, visibility, user_id")
       .eq("id", parentRaw)
       .maybeSingle();
     if (parentError) return { ok: false, message: parentError.message };
@@ -349,6 +350,7 @@ export async function createFeatureComment(input: {
     }
 
     parentVisibility = normalizeCommentVisibility(parent.visibility, "PUBLIC");
+    parentAuthorUserId = String(parent.user_id);
 
     // Viewer não deve conseguir ler INTERNAL via RLS; se chegou null/ausente, tratar.
     if (
@@ -369,12 +371,13 @@ export async function createFeatureComment(input: {
     if (parent.parent_comment_id) {
       const { data: root, error: rootError } = await supabase
         .from("feature_comments")
-        .select("id, visibility")
+        .select("id, visibility, user_id")
         .eq("id", parentCommentId)
         .maybeSingle();
       if (rootError) return { ok: false, message: rootError.message };
       if (!root) return { ok: false, message: "Comentário pai não encontrado." };
       parentVisibility = normalizeCommentVisibility(root.visibility, "PUBLIC");
+      parentAuthorUserId = String(root.user_id);
     }
   }
 
@@ -454,6 +457,25 @@ export async function createFeatureComment(input: {
       await supabase.from("feature_comments").delete().eq("id", id);
       return { ok: false, message: mentionError.message };
     }
+  }
+
+  try {
+    const { notifyFeatureCommentCreated } = await import(
+      "@/lib/notifications/emitters"
+    );
+    await notifyFeatureCommentCreated({
+      actorUserId: userId,
+      featureId,
+      featureName: String(feature.name ?? "Funcionalidade"),
+      commentId: id,
+      content,
+      visibility,
+      parentCommentId,
+      parentAuthorUserId,
+      mentionedUserIds: pending.map((m) => m.userId),
+    });
+  } catch (err) {
+    console.error("[notifications:comment]", err);
   }
 
   revalidateCommentSurfaces(featureId);

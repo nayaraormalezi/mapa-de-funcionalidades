@@ -627,6 +627,24 @@ export function FeatureComments({
   }, [reload]);
 
   useEffect(() => {
+    if (loading || typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const commentId = params.get("comment");
+    const targetId = commentId
+      ? `comment-${commentId}`
+      : window.location.hash === "#comentarios"
+        ? "comentarios"
+        : null;
+    if (!targetId) return;
+    const el = document.getElementById(targetId);
+    if (el) {
+      window.requestAnimationFrame(() => {
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
+  }, [loading, comments]);
+
+  useEffect(() => {
     return subscribeFeatureCommentsChanged((changedId) => {
       if (changedId === featureId) void reload();
     });
@@ -716,8 +734,9 @@ export function FeatureComments({
     return (
       <li
         key={comment.id}
+        id={`comment-${comment.id}`}
         className={cn(
-          "min-w-0",
+          "min-w-0 scroll-mt-24",
           isReply && "border-l-2 border-slate-200 pl-3 sm:pl-4",
         )}
       >
@@ -806,7 +825,7 @@ export function FeatureComments({
     : [{ id: "public", label: "Públicos" }];
 
   return (
-    <section className={cn("space-y-4", className)}>
+    <section id="comentarios" className={cn("space-y-4", className)}>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2
           className={cn(

@@ -30,6 +30,25 @@ async function guardMutation(): Promise<ActionResult | null> {
   return null;
 }
 
+async function emitDomainNotification(
+  build: () => Promise<Parameters<
+    typeof import("@/lib/notifications/emitters").notifyDomainEvent
+  >[0] | null>,
+) {
+  try {
+    const gate = await requireCanEdit();
+    if (!gate.ok || !gate.auth.userId) return;
+    const payload = await build();
+    if (!payload) return;
+    const { notifyDomainEvent } = await import(
+      "@/lib/notifications/emitters"
+    );
+    await notifyDomainEvent({ ...payload, actorUserId: gate.auth.userId });
+  } catch (err) {
+    console.error("[notifications:domain]", err);
+  }
+}
+
 function revalidateAll() {
   invalidateDatabaseCache();
   revalidatePath("/", "layout");
@@ -62,7 +81,9 @@ export async function upsertFeature(formData: FormData): Promise<ActionResult> {
   const blocked = await guardMutation();
   if (blocked) return blocked;
 
-  const id = (formData.get("id") as string) || newId("feat");
+  const existingId = String(formData.get("id") ?? "").trim();
+  const id = existingId || newId("feat");
+  const isCreate = !existingId;
   const productIdsRaw = String(formData.get("product_ids") ?? "").trim();
   const needIdsRaw = String(formData.get("need_ids") ?? "").trim();
   const journeyIdsRaw = String(formData.get("journey_ids") ?? "").trim();
@@ -140,6 +161,17 @@ export async function upsertFeature(formData: FormData): Promise<ActionResult> {
   }
 
   revalidateAll();
+  await emitDomainNotification(async () => ({
+    type: isCreate ? "FEATURE_CREATED" : "FEATURE_UPDATED",
+    actorUserId: "",
+    title: isCreate
+      ? `adicionou a funcionalidade "${String(payload.name)}"`
+      : `atualizou a funcionalidade "${String(payload.name)}"`,
+    entityType: "feature",
+    entityId: id,
+    href: `/funcionalidades/${id}`,
+    metadata: { featureName: String(payload.name) },
+  }));
   return { ok: true, message: "Funcionalidade salva.", id };
 }
 
@@ -322,6 +354,15 @@ export async function createFeatureFromModal(input: {
   }
 
   revalidateAll();
+  await emitDomainNotification(async () => ({
+    type: "FEATURE_CREATED",
+    actorUserId: "",
+    title: `adicionou a funcionalidade "${featureName}"`,
+    entityType: "feature",
+    entityId: featureId,
+    href: `/funcionalidades/${featureId}`,
+    metadata: { featureName },
+  }));
   return {
     ok: true,
     message: "Funcionalidade criada com sucesso.",
@@ -669,7 +710,9 @@ export async function upsertUserNeed(formData: FormData): Promise<ActionResult> 
   const blocked = await guardMutation();
   if (blocked) return blocked;
 
-  const id = (formData.get("id") as string) || newId("need");
+  const existingId = String(formData.get("id") ?? "").trim();
+  const id = existingId || newId("need");
+  const isCreate = !existingId;
   const journeyId = String(formData.get("journey_id") ?? "");
   const journeyStageId =
     String(formData.get("journey_stage_id") ?? "").trim() || null;
@@ -749,6 +792,17 @@ export async function upsertUserNeed(formData: FormData): Promise<ActionResult> 
   }
 
   revalidateAll();
+  await emitDomainNotification(async () => ({
+    type: isCreate ? "NEED_CREATED" : "NEED_UPDATED",
+    actorUserId: "",
+    title: isCreate
+      ? `adicionou a necessidade "${payload.name}"`
+      : `atualizou a necessidade "${payload.name}"`,
+    entityType: "user_need",
+    entityId: id,
+    href: "/jornadas",
+    metadata: { needName: payload.name },
+  }));
   return { ok: true, message: "Necessidade salva.", id };
 }
 
@@ -982,6 +1036,15 @@ export async function upsertFeatureChannelContext(
     }
 
     revalidateAll();
+    await emitDomainNotification(async () => ({
+      type: "FEATURE_STATUS_UPDATED",
+      actorUserId: "",
+      title: `atualizou o status de uma implementação`,
+      entityType: "feature",
+      entityId: featureId,
+      href: `/funcionalidades/${featureId}`,
+      metadata: { phase, status, fccId: primaryId },
+    }));
     return {
       ok: true,
       message:
@@ -1007,6 +1070,15 @@ export async function upsertFeatureChannelContext(
   }
 
   revalidateAll();
+  await emitDomainNotification(async () => ({
+    type: "CHANNEL_CONTEXT_CREATED",
+    actorUserId: "",
+    title: "adicionou uma nova implementação/canal",
+    entityType: "feature",
+    entityId: featureId,
+    href: `/funcionalidades/${featureId}`,
+    metadata: { fccIds: createdIds },
+  }));
   return {
     ok: true,
     message:
@@ -1429,7 +1501,9 @@ export async function upsertIssue(formData: FormData): Promise<ActionResult> {
   const blocked = await guardMutation();
   if (blocked) return blocked;
 
-  const id = (formData.get("id") as string) || newId("iss");
+  const existingId = String(formData.get("id") ?? "").trim();
+  const id = existingId || newId("iss");
+  const isCreate = !existingId;
   // Fase 8A: NÃO escrever evidence_ids (legado DEPRECATED).
   // Fonte de verdade: Evidence.owner FEATURE | EVALUATION.
   // Storage físico: tabela `gaps` (Issue / Gap₂) — sem rename nesta fase.
@@ -1472,6 +1546,17 @@ export async function upsertIssue(formData: FormData): Promise<ActionResult> {
   const { error } = await supabase.from("gaps").upsert(payload);
   if (error) return { ok: false, message: error.message };
   revalidateAll();
+  await emitDomainNotification(async () => ({
+    type: isCreate ? "IMPROVEMENT_CREATED" : "IMPROVEMENT_UPDATED",
+    actorUserId: "",
+    title: isCreate
+      ? `adicionou a melhoria "${payload.title}"`
+      : `atualizou a melhoria "${payload.title}"`,
+    entityType: "issue",
+    entityId: id,
+    href: `/gaps/${id}`,
+    metadata: { title: payload.title },
+  }));
   return { ok: true, message: "Problema salvo.", id };
 }
 
@@ -1947,6 +2032,30 @@ export async function upsertFeatureEvolution(
     }
 
     revalidateAll();
+    await emitDomainNotification(async () => {
+      let featureId: string | null =
+        String(formData.get("feature_id") ?? "").trim() || null;
+      if (!featureId) {
+        const supabase = await createClient();
+        const { data: fcc } = await supabase
+          .from("feature_channel_contexts")
+          .select("feature_id")
+          .eq("id", fccIds[0])
+          .maybeSingle();
+        featureId = (fcc?.feature_id as string | undefined) ?? null;
+      }
+      return {
+        type: "EVOLUTION_UPDATED" as const,
+        actorUserId: "",
+        title: `atualizou a evolução "${title}"`,
+        entityType: "feature_evolution" as const,
+        entityId: existingId,
+        href: featureId
+          ? `/funcionalidades/${featureId}`
+          : "/roadmap",
+        metadata: { title },
+      };
+    });
     return { ok: true, message: "Evolução salva.", id: existingId };
   }
 
@@ -2059,6 +2168,27 @@ export async function upsertFeatureEvolution(
   }
 
   revalidateAll();
+  await emitDomainNotification(async () => {
+    let featureId: string | null =
+      String(formData.get("feature_id") ?? "").trim() || null;
+    if (!featureId) {
+      const { data: fcc } = await supabase
+        .from("feature_channel_contexts")
+        .select("feature_id")
+        .eq("id", fccIds[0])
+        .maybeSingle();
+      featureId = (fcc?.feature_id as string | undefined) ?? null;
+    }
+    return {
+      type: "EVOLUTION_CREATED" as const,
+      actorUserId: "",
+      title: `adicionou a evolução "${title}"`,
+      entityType: "feature_evolution" as const,
+      entityId: createdIds[0]!,
+      href: featureId ? `/funcionalidades/${featureId}` : "/roadmap",
+      metadata: { title },
+    };
+  });
   return {
     ok: true,
     message:

@@ -24,6 +24,7 @@ import {
 import { CONCEPT_LABEL } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 import type { UserProfile } from "@/types";
+import { NotificationPreferencesPanel } from "@/components/notifications/notification-preferences-panel";
 import { UsersManager } from "./users-manager";
 
 const roleLabel: Record<string, string> = {
@@ -334,26 +335,8 @@ export function ConfiguracoesClient({
               <InfoRow label="E-mail" value={email || "—"} />
               <InfoRow label="Tema" value="Claro" />
             </dl>
-            <div className="mt-4">
-              <p className="mb-2 text-xs font-medium text-[var(--muted-foreground)]">
-                Notificações
-              </p>
-              <ul className="space-y-2 text-sm text-slate-700">
-                {[
-                  "Novas oportunidades",
-                  "Atualizações de entregas",
-                  "Menções e comentários",
-                  "Resumo semanal por e-mail",
-                ].map((line) => (
-                  <li
-                    key={line}
-                    className="flex items-center gap-2 rounded-lg border border-[var(--border)] px-3 py-2"
-                  >
-                    <span className="h-3.5 w-3.5 rounded border border-slate-300 bg-white" />
-                    {line}
-                  </li>
-                ))}
-              </ul>
+            <div className="mt-4 border-t border-[var(--border)] pt-4">
+              <NotificationPreferencesPanel />
             </div>
           </SurfaceCard>
           <UserCard

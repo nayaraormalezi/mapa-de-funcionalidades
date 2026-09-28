@@ -10,6 +10,7 @@
     "test:data-mode": "npx --yes tsx src/lib/data-mode.assert.ts",
     "test:permissions": "npx --yes tsx src/lib/permissions.assert.ts",
     "test:comments": "npx --yes tsx src/lib/comments.assert.ts",
+    "test:notifications": "npx --yes tsx src/lib/notifications.assert.ts",
     "test:health": "npx --yes tsx src/lib/health.assert.ts",
     "test:issue": "npx --yes tsx src/lib/issue.assert.ts",
     "test:intelligence": "npx --yes tsx src/lib/intelligence-domain.assert.ts",
