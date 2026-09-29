@@ -488,6 +488,7 @@ export function ImplementationEditModal({
               label="Responsável"
               name="responsible"
               defaultValue={context?.responsible}
+              hint="Quem está responsável pela execução ou acompanhamento."
             />
             <Field
               label="Ticket TI"
@@ -804,6 +805,7 @@ export function EvolutionEditModal({
           label="Responsável"
           name="responsible"
           defaultValue={evolution?.responsible}
+          hint="Quem está responsável pela execução ou acompanhamento."
         />
         <MeasurementAndEvidenceFields
           measurementDefault={evolution?.measurement}

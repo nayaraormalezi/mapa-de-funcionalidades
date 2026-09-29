@@ -835,8 +835,6 @@ export const demoDatabase: DemoDatabase = {
 
   featureJourneys: [],
 
-  featureUserProfiles: [],
-
   featureChannelContexts: [],
 
   evidences: [],

@@ -9,7 +9,6 @@ import {
   evaluationChannelKey,
   groupEvaluationsByChannel,
 } from "@/lib/health";
-import { profileFilterKeysForFeature } from "@/lib/feature-user-profiles";
 import {
   appliesToProduct,
   getProductMeta,
@@ -95,16 +94,6 @@ export async function buildFeatureMapRows(): Promise<FeatureMapRow[]> {
   const evalsByChannel = groupEvaluationsByChannel(
     db.featureChannelEvaluations,
   );
-
-  const profilesByFeature = new Map<
-    string,
-    (typeof db.featureUserProfiles)[number][]
-  >();
-  for (const p of db.featureUserProfiles ?? []) {
-    const list = profilesByFeature.get(p.featureId) ?? [];
-    list.push(p);
-    profilesByFeature.set(p.featureId, list);
-  }
 
   return db.featureChannelContexts
     .map((fcc): FeatureMapRow | null => {
@@ -193,10 +182,6 @@ export async function buildFeatureMapRows(): Promise<FeatureMapRow[]> {
         evalsByChannel.get(evalKey) ?? [],
       );
 
-      const featureProfiles = profilesByFeature.get(feature.id) ?? [];
-      const { keys: userProfileKeys, labels: userProfileLabels } =
-        profileFilterKeysForFeature(featureProfiles);
-
       return {
         featureId: feature.id,
         featureName: feature.name,
@@ -238,6 +223,7 @@ export async function buildFeatureMapRows(): Promise<FeatureMapRow[]> {
         expectedDate: fcc.expectedDate,
         launchDate: fcc.launchDate,
         responsible: fcc.responsible,
+        responsibles: fcc.responsibles ?? [],
         notes: fcc.notes,
         figmaUrl: fcc.figmaUrl ?? null,
         experienceImageUrl: fcc.experienceImageUrl ?? null,
@@ -252,8 +238,6 @@ export async function buildFeatureMapRows(): Promise<FeatureMapRow[]> {
         researchFileMime: fcc.researchFileMime ?? null,
         researchFileSize: fcc.researchFileSize ?? null,
         needsEvolution: Boolean(fcc.needsEvolution),
-        userProfileKeys,
-        userProfileLabels,
       };
     })
     .filter((row): row is FeatureMapRow => row !== null);

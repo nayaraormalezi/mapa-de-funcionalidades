@@ -18,7 +18,8 @@ import type {
   FeatureJourneyRow,
   FeatureNeedRow,
   FeatureRow,
-  FeatureUserProfileRow,
+  FeatureChannelContextResponsibleRow,
+  FeatureEvolutionResponsibleRow,
   GapRow,
   FeatureEvolutionRow,
   FeatureChannelEvaluationRow,
@@ -104,7 +105,8 @@ async function fetchFromSupabase(): Promise<DemoDatabase> {
     features,
     featureNeeds,
     featureJourneys,
-    featureUserProfiles,
+    featureChannelContextResponsibles,
+    featureEvolutionResponsibles,
     channels,
     channelContexts,
     featureChannelContexts,
@@ -136,10 +138,15 @@ async function fetchFromSupabase(): Promise<DemoDatabase> {
     supabase.from("feature_needs").select("*"),
     supabase.from("feature_journeys").select("*"),
     supabase
-      .from("feature_user_profiles")
+      .from("feature_channel_context_responsibles")
       .select(
-        // Hint explícito: há 2 FKs para profiles (user_id e created_by).
-        "id, feature_id, user_id, profile_name, created_by, created_at, updated_at, profiles!feature_user_profiles_user_id_fkey(full_name, email)",
+        "id, feature_channel_context_id, user_id, responsible_name, created_by, created_at, updated_at, profiles!feature_channel_context_responsibles_user_id_fkey(full_name, email)",
+      )
+      .order("created_at", { ascending: true }),
+    supabase
+      .from("feature_evolution_responsibles")
+      .select(
+        "id, feature_evolution_id, user_id, responsible_name, created_by, created_at, updated_at, profiles!feature_evolution_responsibles_user_id_fkey(full_name, email)",
       )
       .order("created_at", { ascending: true }),
     supabase.from("channels").select("*").eq("active", true).order("name"),
@@ -176,7 +183,7 @@ async function fetchFromSupabase(): Promise<DemoDatabase> {
     featureJourneys.error && !isMissingRelation(featureJourneys.error)
       ? featureJourneys.error
       : null,
-    // feature_user_profiles: tabela nova/opcional — nunca derruba o carregamento.
+    // Tabelas novas/opcionais de responsáveis — nunca derrubam o carregamento.
     featureEvolutions.error &&
     !isMissingRelation(featureEvolutions.error) &&
     !/relation .*feature_evolutions.* does not exist|Could not find the table/i.test(
@@ -231,9 +238,14 @@ async function fetchFromSupabase(): Promise<DemoDatabase> {
     featureJourneys: (isMissingRelation(featureJourneys.error)
       ? []
       : (featureJourneys.data ?? [])) as FeatureJourneyRow[],
-    featureUserProfiles: (featureUserProfiles.error
+    featureChannelContextResponsibles: (featureChannelContextResponsibles.error
       ? []
-      : (featureUserProfiles.data ?? [])) as FeatureUserProfileRow[],
+      : (featureChannelContextResponsibles.data ??
+        [])) as FeatureChannelContextResponsibleRow[],
+    featureEvolutionResponsibles: (featureEvolutionResponsibles.error
+      ? []
+      : (featureEvolutionResponsibles.data ??
+        [])) as FeatureEvolutionResponsibleRow[],
     channels: (channels.data ?? []) as ChannelRow[],
     channelContexts: (channelContexts.data ?? []) as ChannelContextRow[],
     featureChannelContexts: (featureChannelContexts.data ??

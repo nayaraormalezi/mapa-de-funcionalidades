@@ -127,15 +127,28 @@ export type FeatureJourneyRow = {
   journey_id: string;
 };
 
-export type FeatureUserProfileRow = {
+export type FeatureChannelContextResponsibleRow = {
   id: string;
-  feature_id: string;
+  feature_channel_context_id: string;
   user_id: string | null;
-  profile_name: string | null;
+  responsible_name: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
-  /** Join opcional profiles (user_id). Pode vir como objeto ou array do PostgREST. */
+  profiles?:
+    | { full_name?: string | null; email?: string | null }
+    | { full_name?: string | null; email?: string | null }[]
+    | null;
+};
+
+export type FeatureEvolutionResponsibleRow = {
+  id: string;
+  feature_evolution_id: string;
+  user_id: string | null;
+  responsible_name: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
   profiles?:
     | { full_name?: string | null; email?: string | null }
     | { full_name?: string | null; email?: string | null }[]
@@ -338,7 +351,8 @@ export function mapDatabase(rows: {
   features: FeatureRow[];
   featureNeeds?: FeatureNeedRow[];
   featureJourneys?: FeatureJourneyRow[];
-  featureUserProfiles?: FeatureUserProfileRow[];
+  featureChannelContextResponsibles?: FeatureChannelContextResponsibleRow[];
+  featureEvolutionResponsibles?: FeatureEvolutionResponsibleRow[];
   channels: ChannelRow[];
   channelContexts: ChannelContextRow[];
   featureChannelContexts: FeatureChannelContextRow[];
@@ -370,6 +384,70 @@ export function mapDatabase(rows: {
     rows.capabilities.map((c) => [c.id, c] as const),
   );
   const needById = new Map(rows.userNeeds.map((n) => [n.id, n] as const));
+
+  function mapResponsibleRow(
+    ownerKind: "FCC" | "EVOLUTION",
+    ownerId: string,
+    row: {
+      id: string;
+      user_id: string | null;
+      responsible_name: string | null;
+      created_by: string | null;
+      created_at: string;
+      updated_at: string;
+      profiles?:
+        | { full_name?: string | null; email?: string | null }
+        | { full_name?: string | null; email?: string | null }[]
+        | null;
+    },
+  ) {
+    const isRegistered = Boolean(row.user_id);
+    const profileJoin = Array.isArray(row.profiles)
+      ? row.profiles[0]
+      : row.profiles;
+    const fullName = profileJoin?.full_name?.trim() || null;
+    const email = profileJoin?.email?.trim() || null;
+    const manualName = row.responsible_name?.trim() || null;
+    return {
+      id: row.id,
+      ownerKind,
+      ownerId,
+      kind: (isRegistered ? "REGISTERED_USER" : "MANUAL") as
+        | "REGISTERED_USER"
+        | "MANUAL",
+      userId: row.user_id,
+      responsibleName: isRegistered ? null : manualName,
+      displayName: isRegistered
+        ? fullName || email || "Usuário"
+        : manualName || "Responsável",
+      email: isRegistered ? email : null,
+      createdBy: row.created_by,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  const responsiblesByFcc = new Map<
+    string,
+    ReturnType<typeof mapResponsibleRow>[]
+  >();
+  for (const row of rows.featureChannelContextResponsibles ?? []) {
+    const list = responsiblesByFcc.get(row.feature_channel_context_id) ?? [];
+    list.push(
+      mapResponsibleRow("FCC", row.feature_channel_context_id, row),
+    );
+    responsiblesByFcc.set(row.feature_channel_context_id, list);
+  }
+
+  const responsiblesByEvo = new Map<
+    string,
+    ReturnType<typeof mapResponsibleRow>[]
+  >();
+  for (const row of rows.featureEvolutionResponsibles ?? []) {
+    const list = responsiblesByEvo.get(row.feature_evolution_id) ?? [];
+    list.push(mapResponsibleRow("EVOLUTION", row.feature_evolution_id, row));
+    responsiblesByEvo.set(row.feature_evolution_id, list);
+  }
 
   let featureNeedRows = rows.featureNeeds ?? [];
   let featureJourneyRows = rows.featureJourneys ?? [];
@@ -536,31 +614,6 @@ export function mapDatabase(rows: {
       featureId: l.feature_id,
       journeyId: l.journey_id,
     })),
-    featureUserProfiles: (rows.featureUserProfiles ?? []).map((row) => {
-      const isRegistered = Boolean(row.user_id);
-      const profileJoin = Array.isArray(row.profiles)
-        ? row.profiles[0]
-        : row.profiles;
-      const fullName = profileJoin?.full_name?.trim() || null;
-      const email = profileJoin?.email?.trim() || null;
-      const manualName = row.profile_name?.trim() || null;
-      return {
-        id: row.id,
-        featureId: row.feature_id,
-        kind: isRegistered
-          ? ("REGISTERED_USER" as const)
-          : ("MANUAL_PROFILE" as const),
-        userId: row.user_id,
-        profileName: isRegistered ? null : manualName,
-        displayName: isRegistered
-          ? fullName || email || "Usuário"
-          : manualName || "Perfil",
-        email: isRegistered ? email : null,
-        createdBy: row.created_by,
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-      };
-    }),
     channels: rows.channels.map((c) => ({
       id: c.id,
       name: c.name,
@@ -603,6 +656,7 @@ export function mapDatabase(rows: {
         expectedDate: f.expected_date,
         launchDate: f.launch_date,
         responsible: f.responsible,
+        responsibles: responsiblesByFcc.get(f.id) ?? [],
         notes: f.notes,
         figmaUrl: f.figma_url ?? null,
         experienceImageUrl: f.experience_image_url ?? null,
@@ -681,6 +735,7 @@ export function mapDatabase(rows: {
         expectedDate: e.expected_date,
         completedDate: e.completed_date,
         responsible: e.responsible ?? "",
+        responsibles: responsiblesByEvo.get(e.id) ?? [],
         notes: e.notes ?? "",
         measurement: e.measurement ?? "",
         active: e.active !== false,

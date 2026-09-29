@@ -261,19 +261,19 @@ export interface FeatureJourney {
 }
 
 /**
- * Perfil de usuário associado à Feature.
- * Distinto de Público (Cliente/Economiário/Parceiro) e de responsável da task.
- * REGISTERED_USER → userId; MANUAL_PROFILE → profileName.
+ * Responsável pela execução/acompanhamento da unidade de trabalho
+ * (implementação FCC ou evolução). Distinto de Público.
+ * REGISTERED_USER → userId; MANUAL → responsibleName.
  */
-export interface FeatureUserProfile {
+export interface WorkResponsible {
   id: string;
-  featureId: string;
-  kind: "REGISTERED_USER" | "MANUAL_PROFILE";
+  ownerKind: "FCC" | "EVOLUTION";
+  ownerId: string;
+  kind: "REGISTERED_USER" | "MANUAL";
   userId: string | null;
-  profileName: string | null;
-  /** Nome exibido (perfil manual ou fullName do usuário). */
+  responsibleName: string | null;
+  /** Nome exibido (manual ou fullName do usuário). */
   displayName: string;
-  /** E-mail quando usuário cadastrado. */
   email: string | null;
   createdBy: string | null;
   createdAt: string;
@@ -358,7 +358,13 @@ export interface FeatureChannelContext {
   startDate: string | null;
   expectedDate: string | null;
   launchDate: string | null;
+  /**
+   * Resumo denormalizado dos responsáveis (filtros / compatibilidade).
+   * Fonte canônica: `responsibles`.
+   */
   responsible: string;
+  /** Responsáveis pela execução desta implementação. */
+  responsibles: WorkResponsible[];
   notes: string;
   /** Link do Figma da experiência (opcional). */
   figmaUrl?: string | null;
@@ -473,7 +479,13 @@ export interface FeatureEvolution {
   startDate: string | null;
   expectedDate: string | null;
   completedDate: string | null;
+  /**
+   * Resumo denormalizado dos responsáveis.
+   * Fonte canônica: `responsibles`.
+   */
   responsible: string;
+  /** Responsáveis pela execução desta evolução. */
+  responsibles: WorkResponsible[];
   notes: string;
   /**
    * Como será mensurado o sucesso da evolução
@@ -664,6 +676,8 @@ export interface FeatureMapRow {
   expectedDate: string | null;
   launchDate: string | null;
   responsible: string;
+  /** Responsáveis estruturados desta implementação (FCC). */
+  responsibles?: WorkResponsible[];
   notes: string;
   figmaUrl?: string | null;
   experienceImageUrl?: string | null;
@@ -678,10 +692,6 @@ export interface FeatureMapRow {
   researchFileSize?: number | null;
   researchFileUrl?: string | null;
   needsEvolution?: boolean;
-  /** Chaves de filtro de perfil de usuário (user:uuid | manual:nome). */
-  userProfileKeys?: string[];
-  /** Rótulos exibíveis dos perfis associados à Feature. */
-  userProfileLabels?: string[];
 }
 
 export interface MapFilters {
@@ -708,8 +718,6 @@ export interface MapFilters {
   priorities: Priority[];
   responsibles: string[];
   phases: RoadmapPhase[];
-  /** Filtro por perfil de usuário (user:id | manual:nome-normalizado). */
-  userProfileKeys: string[];
 }
 
 export interface DashboardKpis {
@@ -773,7 +781,6 @@ export interface DemoDatabase {
   features: Feature[];
   featureNeeds: FeatureNeed[];
   featureJourneys: FeatureJourney[];
-  featureUserProfiles: FeatureUserProfile[];
   channels: Channel[];
   channelContexts: ChannelContext[];
   /** Implementações (Feature × Product × ChannelContext). */

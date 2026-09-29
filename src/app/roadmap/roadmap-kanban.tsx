@@ -348,6 +348,12 @@ function BoardCardView({
           </span>
           <PriorityBadge priority={card.evo.priority} />
         </div>
+        {card.evo.responsible ? (
+          <p className="mt-2 text-[11px] text-slate-600">
+            <span className="font-medium text-slate-500">Responsável:</span>{" "}
+            {card.evo.responsible}
+          </p>
+        ) : null}
         <p className="mt-2 text-[11px] text-slate-500">
           Previsão: {formatMonthYear(card.evo.expectedDate)}
         </p>
@@ -394,6 +400,12 @@ function BoardCardView({
             {temporalStatusLabel[item.temporalStatus]}
           </span>
         </div>
+        {item.responsible ? (
+          <p className="mt-2 text-[11px] text-slate-600">
+            <span className="font-medium text-slate-500">Responsável:</span>{" "}
+            {item.responsible}
+          </p>
+        ) : null}
         <p className="mt-2 text-[11px] text-slate-500">
           Previsão: {formatMonthYear(item.expectedDate)}
         </p>

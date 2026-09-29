@@ -1095,6 +1095,17 @@ export async function upsertFeatureChannelContext(
     });
     if (error) return { ok: false, message: error.message };
     createdIds.push(fccId);
+
+    const responsibleText = baseFields.responsible.trim();
+    if (responsibleText) {
+      await supabase.from("feature_channel_context_responsibles").insert({
+        id: newId("fcr"),
+        feature_channel_context_id: fccId,
+        user_id: null,
+        responsible_name: responsibleText.slice(0, 120),
+        created_by: null,
+      });
+    }
   }
 
   revalidateAll();

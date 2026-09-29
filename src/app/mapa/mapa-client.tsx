@@ -139,7 +139,6 @@ export function MapaClient({
   journeyAudienceStages = [],
   products,
   responsibles,
-  userProfiles = [],
   existingFeatures = [],
 }: {
   rows: FeatureMapRow[];
@@ -163,7 +162,6 @@ export function MapaClient({
   }[];
   products: Option[];
   responsibles: Option[];
-  userProfiles?: Option[];
   existingFeatures?: (Option & { description?: string })[];
 }) {
   const router = useRouter();
@@ -353,14 +351,6 @@ export function MapaClient({
               value={filters.responsibles[0] ?? ""}
               onChange={(v) => singleSelect(updateFilter, "responsibles", v)}
               options={[{ value: "", label: "Todos" }, ...responsibles]}
-            />
-            <FilterSelect
-              label="Perfil de usuário"
-              value={filters.userProfileKeys[0] ?? ""}
-              onChange={(v) =>
-                singleSelect(updateFilter, "userProfileKeys", v)
-              }
-              options={[{ value: "", label: "Todos" }, ...userProfiles]}
             />
             <div className="sm:col-span-2 lg:col-span-4 flex justify-end">
               <Button

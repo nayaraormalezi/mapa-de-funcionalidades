@@ -1,6 +1,5 @@
 import { MapaClient } from "@/app/mapa/mapa-client";
 import { PRODUCT_OPTIONS } from "@/lib/products";
-import { buildUserProfileFilterOptions } from "@/lib/feature-user-profiles";
 import {
   buildFeatureMapRows,
   getAudiences,
@@ -24,10 +23,6 @@ export default async function MapaPage() {
   const responsibles = Array.from(
     new Set(rows.map((r) => r.responsible).filter(Boolean)),
   ).map((responsible) => ({ value: responsible, label: responsible }));
-
-  const userProfiles = buildUserProfileFilterOptions(
-    db.featureUserProfiles ?? [],
-  );
 
   return (
     <MapaClient
@@ -68,7 +63,6 @@ export default async function MapaPage() {
         }))}
       products={products}
       responsibles={responsibles}
-      userProfiles={userProfiles}
       existingFeatures={db.features
         .filter((f) => f.active)
         .map((f) => ({

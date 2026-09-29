@@ -17,7 +17,6 @@ export const emptyFilters: MapFilters = {
   priorities: [],
   responsibles: [],
   phases: [],
-  userProfileKeys: [],
 };
 
 function matchesMulti(selected: string[], value: string): boolean {
@@ -44,18 +43,11 @@ export function applyMapFilters(
         row.productShortName,
         row.owner,
         row.capabilityName,
-        ...(row.userProfileLabels ?? []),
       ]
         .join(" ")
         .toLowerCase();
       if (!haystack.includes(query)) return false;
     }
-
-    const profileOk =
-      filters.userProfileKeys.length === 0 ||
-      (row.userProfileKeys ?? []).some((k) =>
-        filters.userProfileKeys.includes(k),
-      );
 
     return (
       matchesMulti(filters.audienceIds, row.audienceId) &&
@@ -71,8 +63,7 @@ export function applyMapFilters(
       matchesMulti(filters.products, row.product) &&
       matchesMulti(filters.priorities, row.priority) &&
       matchesMulti(filters.responsibles, row.responsible) &&
-      matchesMulti(filters.phases, row.phase) &&
-      profileOk
+      matchesMulti(filters.phases, row.phase)
     );
   });
 }
@@ -94,7 +85,6 @@ export function countActiveFilters(filters: MapFilters): number {
     "priorities",
     "responsibles",
     "phases",
-    "userProfileKeys",
   ];
   for (const key of arrays) {
     const value = filters[key];

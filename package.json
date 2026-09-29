@@ -19,7 +19,7 @@
     "test:reports": "npx --yes tsx src/lib/report-metrics.assert.ts",
     "test:auth": "npx --yes tsx src/lib/auth-messages.assert.ts",
     "test:change-password": "npx --yes tsx src/lib/change-password.assert.ts",
-    "test:feature-user-profiles": "npx --yes tsx src/lib/feature-user-profiles.assert.ts",
+    "test:work-responsibles": "node --experimental-strip-types src/lib/work-responsibles.assert.ts",
     "typecheck": "tsc --noEmit",
     "seed:fase16-3:dry": "npx --yes tsx scripts/load-fase16-3-catalog.ts --dry-run",
     "seed:fase16-3": "npx --yes tsx scripts/load-fase16-3-catalog.ts --apply",

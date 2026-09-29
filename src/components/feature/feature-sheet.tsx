@@ -15,7 +15,7 @@ import {
   type EvaluationLaunchRequest,
 } from "@/components/feature/channel-intelligence";
 import { FeatureComments } from "@/components/feature/feature-comments";
-import { FeatureUserProfilesPanel } from "@/components/feature/feature-user-profiles-panel";
+import { WorkResponsiblesPanel } from "@/components/feature/work-responsibles-panel";
 import {
   ContextEditModal,
   EvidenceEditModal,
@@ -54,7 +54,6 @@ import type {
   FeatureChannelEvaluation,
   FeatureEvolution,
   FeatureMapRow,
-  FeatureUserProfile,
   Gap,
   Journey,
   UserNeed,
@@ -152,6 +151,15 @@ type SheetModalState =
 
 function cleanDescription(value: string): string {
   return value.replace(/^\[DEMO\]\s*/i, "").trim();
+}
+
+/** Prefer structured responsibles; fall back to denormalized text. */
+function evolutionResponsibleLabel(evo: FeatureEvolution): string {
+  const names = (evo.responsibles ?? [])
+    .map((r) => r.displayName.trim())
+    .filter(Boolean);
+  if (names.length > 0) return names.join(", ");
+  return evo.responsible?.trim() || "—";
 }
 
 function groupChannelCards(contexts: FeatureMapRow[]): ChannelCard[] {
@@ -269,7 +277,6 @@ export function FeatureSheet({
   audienceOptions,
   momentOptions,
   channelOptions,
-  userProfiles = [],
 }: {
   feature: Feature;
   hierarchy: {
@@ -296,7 +303,6 @@ export function FeatureSheet({
   audienceOptions: Option[];
   momentOptions: Option[];
   channelOptions: Option[];
-  userProfiles?: FeatureUserProfile[];
 }) {
   const { canEdit } = useAuth();
   const router = useRouter();
@@ -709,12 +715,6 @@ export function FeatureSheet({
         </dl>
       </section>
 
-      <FeatureUserProfilesPanel
-        featureId={feature.id}
-        initialProfiles={userProfiles}
-        canEdit={canEdit}
-      />
-
       {/* DISPONIBILIDADE POR CANAL */}
       <section className="space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -952,7 +952,7 @@ export function FeatureSheet({
                           {" · "}
                           Previsão: {formatMonthYear(evo.expectedDate)}
                           {" · "}
-                          Responsável: {evo.responsible || "—"}
+                          Responsável: {evolutionResponsibleLabel(evo)}
                         </p>
                         <button
                           type="button"
@@ -1015,9 +1015,12 @@ export function FeatureSheet({
                         {concludedLabel
                           ? ` · Concluída em ${concludedLabel}`
                           : ""}
-                        {evo.responsible
-                          ? ` · Responsável: ${evo.responsible}`
-                          : ""}
+                        {(() => {
+                          const label = evolutionResponsibleLabel(evo);
+                          return label !== "—"
+                            ? ` · Responsável: ${label}`
+                            : "";
+                        })()}
                       </p>
                       <button
                         type="button"
@@ -1232,6 +1235,7 @@ export function FeatureSheet({
         <EvolutionViewModal
           evolution={viewEvolution.evolution}
           channelName={viewEvolution.channelName}
+          canEdit={canEdit}
           onClose={() => setViewEvolution(null)}
           onEdit={
             canEdit
@@ -1693,14 +1697,23 @@ function ChannelAvailabilityCard({
             ) : null}
           </div>
 
-          <div className="mt-auto space-y-1 border-t border-[var(--border)] pt-3 text-xs text-slate-600">
+          <div className="mt-auto space-y-2 border-t border-[var(--border)] pt-3 text-xs text-slate-600">
             {isAvailable && card.launchDate ? (
               <p>Disponível desde {formatDate(card.launchDate)}</p>
             ) : null}
             {!isAvailable && card.expectedDate ? (
               <p>Previsão: {formatMonthYear(card.expectedDate)}</p>
             ) : null}
-            {card.responsible ? <p>Responsável: {card.responsible}</p> : null}
+            <WorkResponsiblesPanel
+              owner={{
+                kind: "FCC",
+                featureChannelContextId:
+                  card.primaryContext.featureChannelContextId,
+              }}
+              initialResponsibles={card.primaryContext.responsibles ?? []}
+              canEdit={canEdit}
+              compact
+            />
             <TicketTiLine ticketNumber={card.ticketNumber} />
             {(card.phase === "PAUSED" || card.phase === "REMOVED") &&
             card.notes &&
@@ -1731,11 +1744,13 @@ function ChannelAvailabilityCard({
 function EvolutionViewModal({
   evolution,
   channelName,
+  canEdit = false,
   onClose,
   onEdit,
 }: {
   evolution: FeatureEvolution;
   channelName: string;
+  canEdit?: boolean;
   onClose: () => void;
   onEdit?: () => void;
 }) {
@@ -1823,14 +1838,6 @@ function EvolutionViewModal({
                 {formatMonthYear(evolution.expectedDate)}
               </dd>
             </div>
-            <div className="sm:col-span-2">
-              <dt className="text-[11px] font-semibold tracking-wide text-slate-400 uppercase">
-                Responsável
-              </dt>
-              <dd className="mt-0.5 text-sm text-slate-800">
-                {evolution.responsible || "—"}
-              </dd>
-            </div>
             {evolution.measurement ? (
               <div className="sm:col-span-2">
                 <dt className="text-[11px] font-semibold tracking-wide text-slate-400 uppercase">
@@ -1842,6 +1849,21 @@ function EvolutionViewModal({
               </div>
             ) : null}
           </dl>
+
+          <WorkResponsiblesPanel
+            owner={{
+              kind: "EVOLUTION",
+              featureEvolutionId: evolution.id,
+            }}
+            initialResponsibles={evolution.responsibles ?? []}
+            canEdit={canEdit}
+          />
+          {(evolution.responsibles ?? []).length === 0 &&
+          evolution.responsible?.trim() ? (
+            <p className="text-xs text-slate-500">
+              Responsável (legado): {evolution.responsible}
+            </p>
+          ) : null}
         </div>
 
         <div className="flex flex-wrap justify-end gap-2 border-t border-[var(--border)] px-5 py-3">
