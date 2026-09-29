@@ -8,6 +8,7 @@ export type AuthActionContext =
   | "signup"
   | "reset"
   | "update-password"
+  | "change-password"
   | "callback";
 
 /** Campos seguros do AuthError do Supabase (e similares). */
@@ -88,6 +89,9 @@ export function friendlyAuthMessage(
     msg.includes("invalid credentials") ||
     msg.includes("invalid email or password")
   ) {
+    if (context === "change-password") {
+      return "A senha atual está incorreta.";
+    }
     return "Não foi possível entrar. Verifique seu e-mail e senha e tente novamente.";
   }
 
@@ -101,6 +105,9 @@ export function friendlyAuthMessage(
     msg.includes("too many") ||
     msg.includes("too_many")
   ) {
+    if (context === "change-password") {
+      return "Não foi possível alterar sua senha. Aguarde alguns instantes e tente novamente.";
+    }
     return "Não foi possível entrar agora. Aguarde alguns instantes e tente novamente.";
   }
 
@@ -119,6 +126,9 @@ export function friendlyAuthMessage(
     (msg.includes("password") && msg.includes("least")) ||
     code === "weak_password"
   ) {
+    if (context === "change-password") {
+      return "A nova senha não atende aos requisitos de segurança.";
+    }
     return "A senha deve ter pelo menos 8 caracteres.";
   }
 
@@ -127,7 +137,20 @@ export function friendlyAuthMessage(
     msg.includes("different from the old") ||
     code === "same_password"
   ) {
-    return "Escolha uma senha diferente da atual.";
+    return "Escolha uma senha diferente da senha atual.";
+  }
+
+  // Sessão / usuário não autenticado
+  if (
+    context === "change-password" &&
+    (code === "session_not_found" ||
+      code === "user_not_found" ||
+      status === 401 ||
+      msg.includes("session") ||
+      msg.includes("not authenticated") ||
+      msg.includes("jwt"))
+  ) {
+    return "Sua sessão expirou. Entre novamente para alterar a senha.";
   }
 
   // 4) Outros erros — NÃO tratar como senha incorreta
@@ -141,6 +164,10 @@ export function friendlyAuthMessage(
 
   if (context === "update-password") {
     return "Não foi possível atualizar a senha. Solicite um novo link e tente novamente.";
+  }
+
+  if (context === "change-password") {
+    return "Não foi possível alterar sua senha. Tente novamente.";
   }
 
   if (context === "callback") {

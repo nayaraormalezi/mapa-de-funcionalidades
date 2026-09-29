@@ -7,6 +7,7 @@ const TABS = [
   "cadastros",
   "integracoes",
   "preferencias",
+  "seguranca",
   "dados",
   "auditoria",
 ] as const;

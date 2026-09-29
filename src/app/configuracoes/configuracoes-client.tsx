@@ -25,6 +25,7 @@ import { CONCEPT_LABEL } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 import type { UserProfile } from "@/types";
 import { NotificationPreferencesPanel } from "@/components/notifications/notification-preferences-panel";
+import { ChangePasswordPanel } from "./change-password-panel";
 import { UsersManager } from "./users-manager";
 
 const roleLabel: Record<string, string> = {
@@ -58,6 +59,7 @@ type Tab =
   | "cadastros"
   | "integracoes"
   | "preferencias"
+  | "seguranca"
   | "dados"
   | "auditoria";
 
@@ -114,6 +116,7 @@ export function ConfiguracoesClient({
       : []),
     { id: "integracoes", label: "Integrações" },
     { id: "preferencias", label: "Preferências" },
+    { id: "seguranca", label: "Segurança" },
     { id: "dados", label: "Dados e importação" },
     { id: "auditoria", label: "Auditoria" },
   ];
@@ -347,6 +350,16 @@ export function ConfiguracoesClient({
             initials={initials}
           />
         </div>
+      ) : null}
+
+      {tab === "seguranca" ? (
+        <SurfaceCard className="p-4">
+          <SectionTitle>Segurança da conta</SectionTitle>
+          <p className="mb-4 text-sm text-[var(--muted-foreground)]">
+            Gerencie a senha usada para acessar sua conta.
+          </p>
+          <ChangePasswordPanel />
+        </SurfaceCard>
       ) : null}
 
       {tab === "dados" ? (

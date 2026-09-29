@@ -7,6 +7,11 @@ import {
   buildSignupEmailRedirectTo,
   friendlyAuthMessage,
 } from "@/lib/auth-messages";
+import {
+  CHANGE_PASSWORD_SUCCESS,
+  CHANGE_PASSWORD_UNAUTHENTICATED,
+  validateChangePasswordInput,
+} from "@/lib/change-password";
 import { validateCorporateEmail } from "@/lib/corporate-email";
 import { createClient, isSupabaseEnabled } from "@/lib/supabase/server";
 
@@ -237,6 +242,83 @@ export async function updatePasswordAction(
 
   revalidatePath("/", "layout");
   redirect("/");
+}
+
+/**
+ * Altera a senha do usuário autenticado (Configurações → Segurança).
+ * 1) Confirma a sessão atual (getUser)
+ * 2) Revalida a senha atual com signInWithPassword (sem Admin API)
+ * 3) Atualiza com updateUser({ password })
+ * Não faz logout nem redirect após sucesso.
+ */
+export async function changePasswordAction(
+  _prev: AuthActionResult | null,
+  formData: FormData,
+): Promise<AuthActionResult> {
+  if (!isSupabaseEnabled()) {
+    return {
+      ok: false,
+      message:
+        "Autenticação indisponível no momento. Tente novamente mais tarde.",
+    };
+  }
+
+  // Valores brutos — sem trim()
+  const currentPassword = String(formData.get("current_password") ?? "");
+  const newPassword = String(formData.get("new_password") ?? "");
+  const confirmPassword = String(formData.get("confirm_password") ?? "");
+
+  const validation = validateChangePasswordInput({
+    currentPassword,
+    newPassword,
+    confirmPassword,
+  });
+  if (!validation.ok) {
+    return { ok: false, message: validation.message };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user?.email) {
+    return { ok: false, message: CHANGE_PASSWORD_UNAUTHENTICATED };
+  }
+
+  // Revalida a senha atual na conta da sessão — nunca confia em userId do cliente.
+  const { error: reauthError } = await supabase.auth.signInWithPassword({
+    email: user.email,
+    password: currentPassword,
+  });
+
+  if (reauthError) {
+    return {
+      ok: false,
+      message: friendlyAuthMessage("change-password", {
+        message: reauthError.message,
+        code: reauthError.code,
+        status: reauthError.status,
+        name: reauthError.name,
+      }),
+    };
+  }
+
+  const { error } = await supabase.auth.updateUser({ password: newPassword });
+
+  if (error) {
+    return {
+      ok: false,
+      message: friendlyAuthMessage("change-password", {
+        message: error.message,
+        code: error.code,
+        status: error.status,
+        name: error.name,
+      }),
+    };
+  }
+
+  return { ok: true, message: CHANGE_PASSWORD_SUCCESS };
 }
 
 export async function logoutAction(): Promise<void> {
