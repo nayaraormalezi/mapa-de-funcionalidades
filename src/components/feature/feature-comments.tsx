@@ -932,23 +932,6 @@ export function FeatureComments({
         </div>
       ) : null}
 
-      {canCreate ? (
-        <CommentComposer
-          placeholder="Adicione um comentário... Use @ para mencionar"
-          submitLabel="Comentar"
-          pending={pending}
-          canChooseVisibility={canChooseVisibility}
-          defaultVisibility="PUBLIC"
-          onSubmit={(content, mentionedUserIds, visibility) =>
-            handleCreate(content, mentionedUserIds, visibility)
-          }
-        />
-      ) : (
-        <p className="rounded-lg border border-dashed border-[var(--border)] px-3 py-2 text-xs text-slate-500">
-          Faça login para adicionar um comentário.
-        </p>
-      )}
-
       {error ? (
         <p
           role="alert"
@@ -975,6 +958,23 @@ export function FeatureComments({
         <ul className="space-y-5">
           {roots.map((comment) => renderComment(comment, false))}
         </ul>
+      )}
+
+      {canCreate ? (
+        <CommentComposer
+          placeholder="Adicione um comentário... Use @ para mencionar"
+          submitLabel="Comentar"
+          pending={pending}
+          canChooseVisibility={canChooseVisibility}
+          defaultVisibility="PUBLIC"
+          onSubmit={(content, mentionedUserIds, visibility) =>
+            handleCreate(content, mentionedUserIds, visibility)
+          }
+        />
+      ) : (
+        <p className="rounded-lg border border-dashed border-[var(--border)] px-3 py-2 text-xs text-slate-500">
+          Faça login para adicionar um comentário.
+        </p>
       )}
 
       <ConfirmDialog

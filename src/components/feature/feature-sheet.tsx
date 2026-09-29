@@ -17,6 +17,8 @@ import {
 import { ChannelImplementationDetailModal } from "@/components/feature/channel-implementation-detail-modal";
 import { FeatureComments } from "@/components/feature/feature-comments";
 import { WorkResponsiblesPanel } from "@/components/feature/work-responsibles-panel";
+import { RoadmapEvolutionDrawer } from "@/app/roadmap/roadmap-evolution-drawer";
+import type { RoadmapImpl } from "@/app/roadmap/roadmap-types";
 import {
   ContextEditModal,
   EvidenceEditModal,
@@ -59,7 +61,6 @@ import type {
   Journey,
   UserNeed,
 } from "@/types";
-import { evolutionOriginLabel } from "@/lib/evolution";
 import {
   EVIDENCE_OWNER_LABEL,
   filterEmbeddedNotYetMaterialized,
@@ -149,6 +150,44 @@ type SheetModalState =
   | { type: "evidence"; evidence?: Evidence | null; evaluationId?: string; evaluationName?: string }
   | { type: "issue"; issue?: Gap | null }
   | null;
+
+function mapRowToRoadmapImpl(
+  row: FeatureMapRow,
+  evolutions: FeatureEvolution[] = [],
+): RoadmapImpl {
+  return {
+    id: row.featureChannelContextId,
+    featureId: row.featureId,
+    featureName: row.featureName,
+    featureDescription: row.featureDescription,
+    productId: row.productId,
+    productName: row.product,
+    productShortName: row.productShortName,
+    phase: row.phase,
+    status: row.status,
+    startDate: row.startDate,
+    expectedDate: row.expectedDate,
+    launchDate: row.launchDate,
+    responsible: row.responsible,
+    responsibles: row.responsibles ?? [],
+    notes: row.notes,
+    experience: row.experience,
+    channelContextId: row.channelContextId,
+    audienceId: row.audienceId,
+    audienceName: row.audienceName,
+    momentId: row.momentId,
+    momentName: row.momentName,
+    channelId: row.channelId,
+    channelName: row.channelName,
+    temporalStatus: row.temporalStatus,
+    priority: row.priority,
+    journeyId: row.journeyId,
+    journeyName: row.journeyName,
+    userNeedId: row.userNeedId,
+    userNeedName: row.userNeedName,
+    evolutions,
+  };
+}
 
 function cleanDescription(value: string): string {
   return value.replace(/^\[DEMO\]\s*/i, "").trim();
@@ -312,7 +351,7 @@ export function FeatureSheet({
   const [detailCardKey, setDetailCardKey] = useState<string | null>(null);
   const [viewEvolution, setViewEvolution] = useState<{
     evolution: FeatureEvolution;
-    channelName: string;
+    item: RoadmapImpl;
   } | null>(null);
   const [evalLaunch, setEvalLaunch] = useState<{
     channelContextId: string;
@@ -773,8 +812,16 @@ export function FeatureSheet({
             canEdit={canEdit}
             onOpenImage={setLightboxSrc}
             onOpenDetail={(card) => setDetailCardKey(card.key)}
-            onViewEvolution={(evolution, channelName) =>
-              setViewEvolution({ evolution, channelName })
+            onViewEvolution={(evolution, card) =>
+              setViewEvolution({
+                evolution,
+                item: mapRowToRoadmapImpl(
+                  card.primaryContext,
+                  evolutionsByFcc.get(
+                    card.primaryContext.featureChannelContextId,
+                  ) ?? [],
+                ),
+              })
             }
             onEdit={(card) =>
               setModal({
@@ -980,7 +1027,10 @@ export function FeatureSheet({
                           onClick={() =>
                             setViewEvolution({
                               evolution: evo,
-                              channelName: ctx?.channelName ?? "Canal",
+                              item: mapRowToRoadmapImpl(
+                                ctx ?? contexts[0]!,
+                                [evo],
+                              ),
                             })
                           }
                           className="mt-2 text-xs font-medium text-[var(--brand)] underline-offset-2 hover:underline"
@@ -1048,7 +1098,10 @@ export function FeatureSheet({
                         onClick={() =>
                           setViewEvolution({
                             evolution: evo,
-                            channelName: ctx?.channelName ?? "Canal",
+                            item: mapRowToRoadmapImpl(
+                              ctx ?? contexts[0]!,
+                              [evo],
+                            ),
                           })
                         }
                         className="mt-1.5 text-xs font-medium text-[var(--brand)] underline-offset-2 hover:underline"
@@ -1301,7 +1354,12 @@ export function FeatureSheet({
           onViewEvolution={(evolution) => {
             setViewEvolution({
               evolution,
-              channelName: detailCard.channelName,
+              item: mapRowToRoadmapImpl(
+                detailCard.primaryContext,
+                evolutionsByFcc.get(
+                  detailCard.primaryContext.featureChannelContextId,
+                ) ?? [],
+              ),
             });
           }}
           onOpenImage={setLightboxSrc}
@@ -1336,20 +1394,11 @@ export function FeatureSheet({
       ) : null}
 
       {viewEvolution ? (
-        <EvolutionViewModal
-          evolution={viewEvolution.evolution}
-          channelName={viewEvolution.channelName}
+        <RoadmapEvolutionDrawer
+          evo={viewEvolution.evolution}
+          item={viewEvolution.item}
           canEdit={canEdit}
           onClose={() => setViewEvolution(null)}
-          onEdit={
-            canEdit
-              ? () => {
-                  const evo = viewEvolution.evolution;
-                  setViewEvolution(null);
-                  setModal({ type: "evolution", evolution: evo });
-                }
-              : undefined
-          }
         />
       ) : null}
 
@@ -1448,7 +1497,7 @@ function ChannelCardsRow({
   } | null;
   onOpenImage: (src: string) => void;
   onOpenDetail: (card: ChannelCard) => void;
-  onViewEvolution: (evolution: FeatureEvolution, channelName: string) => void;
+  onViewEvolution: (evolution: FeatureEvolution, card: ChannelCard) => void;
   onEdit: (card: ChannelCard) => void;
   onAddFigma: (ctx: FeatureMapRow) => void;
   onAddScreenshot: (ctx: FeatureMapRow) => void;
@@ -1486,7 +1535,7 @@ function ChannelCardsRow({
         launchRequest={launchForCard}
         onOpenImage={onOpenImage}
         onOpenDetail={() => onOpenDetail(card)}
-        onViewEvolution={onViewEvolution}
+        onViewEvolution={(evo) => onViewEvolution(evo, card)}
         onEdit={() => onEdit(card)}
         onAddFigma={() => onAddFigma(card.primaryContext)}
         onAddScreenshot={() => onAddScreenshot(card.primaryContext)}
@@ -1615,7 +1664,7 @@ function ChannelAvailabilityCard({
   launchRequest?: EvaluationLaunchRequest | null;
   onOpenImage: (src: string) => void;
   onOpenDetail: () => void;
-  onViewEvolution: (evolution: FeatureEvolution, channelName: string) => void;
+  onViewEvolution: (evolution: FeatureEvolution) => void;
   onEdit: () => void;
   onAddFigma: () => void;
   onAddScreenshot: () => void;
@@ -1720,7 +1769,7 @@ function ChannelAvailabilityCard({
               <button
                 type="button"
                 onClick={() =>
-                  onViewEvolution(primaryEvolution, card.channelName)
+                  onViewEvolution(primaryEvolution)
                 }
                 className="mt-1.5 text-xs font-medium text-[var(--brand)] underline-offset-2 hover:underline"
               >
@@ -1863,146 +1912,6 @@ function ChannelAvailabilityCard({
       </button>
       </div>
     </article>
-  );
-}
-
-function EvolutionViewModal({
-  evolution,
-  channelName,
-  canEdit = false,
-  onClose,
-  onEdit,
-}: {
-  evolution: FeatureEvolution;
-  channelName: string;
-  canEdit?: boolean;
-  onClose: () => void;
-  onEdit?: () => void;
-}) {
-  return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
-      <button
-        type="button"
-        className="absolute inset-0 bg-slate-950/45"
-        aria-label="Fechar"
-        onClick={onClose}
-      />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="evolution-view-title"
-        className="relative z-[81] w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl"
-      >
-        <div className="flex items-start justify-between gap-3 border-b border-[var(--border)] px-5 py-4">
-          <div className="min-w-0">
-            <p className="text-[11px] font-semibold tracking-[0.08em] text-slate-400 uppercase">
-              Evolução em andamento
-            </p>
-            <h2
-              id="evolution-view-title"
-              className="mt-1 text-lg font-semibold text-slate-900"
-            >
-              {evolution.title}
-            </h2>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-            aria-label="Fechar"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        <div className="space-y-4 px-5 py-4">
-          {evolution.description ? (
-            <p className="text-sm leading-relaxed text-slate-600">
-              {cleanDescription(evolution.description)}
-            </p>
-          ) : null}
-
-          <dl className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <dt className="text-[11px] font-semibold tracking-wide text-slate-400 uppercase">
-                Origem
-              </dt>
-              <dd className="mt-0.5 text-sm text-slate-800">
-                {evolutionOriginLabel[
-                  evolution.origin ?? "MANUAL"
-                ]}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-[11px] font-semibold tracking-wide text-slate-400 uppercase">
-                Canal
-              </dt>
-              <dd className="mt-0.5 text-sm text-slate-800">{channelName}</dd>
-            </div>
-            <div>
-              <dt className="text-[11px] font-semibold tracking-wide text-slate-400 uppercase">
-                Fase
-              </dt>
-              <dd className="mt-0.5 text-sm text-slate-800">
-                {evolutionPhaseLabel(evolution.phase)}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-[11px] font-semibold tracking-wide text-slate-400 uppercase">
-                Prioridade
-              </dt>
-              <dd className="mt-0.5 text-sm text-slate-800">
-                {priorityLabel[evolution.priority]}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-[11px] font-semibold tracking-wide text-slate-400 uppercase">
-                Previsão
-              </dt>
-              <dd className="mt-0.5 text-sm text-slate-800">
-                {formatMonthYear(evolution.expectedDate)}
-              </dd>
-            </div>
-            {evolution.measurement ? (
-              <div className="sm:col-span-2">
-                <dt className="text-[11px] font-semibold tracking-wide text-slate-400 uppercase">
-                  Mensuração
-                </dt>
-                <dd className="mt-0.5 text-sm text-slate-800">
-                  {evolution.measurement}
-                </dd>
-              </div>
-            ) : null}
-          </dl>
-
-          <WorkResponsiblesPanel
-            owner={{
-              kind: "EVOLUTION",
-              featureEvolutionId: evolution.id,
-            }}
-            initialResponsibles={evolution.responsibles ?? []}
-            canEdit={canEdit}
-          />
-          {(evolution.responsibles ?? []).length === 0 &&
-          evolution.responsible?.trim() ? (
-            <p className="text-xs text-slate-500">
-              Responsável (legado): {evolution.responsible}
-            </p>
-          ) : null}
-        </div>
-
-        <div className="flex flex-wrap justify-end gap-2 border-t border-[var(--border)] px-5 py-3">
-          <Button type="button" variant="outline" size="sm" onClick={onClose}>
-            Fechar
-          </Button>
-          {onEdit ? (
-            <Button type="button" size="sm" onClick={onEdit}>
-              Editar evolução
-            </Button>
-          ) : null}
-        </div>
-      </div>
-    </div>
   );
 }
 

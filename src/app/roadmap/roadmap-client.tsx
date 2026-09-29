@@ -581,13 +581,6 @@ export function RoadmapClient({
           item={selectedEvolution.item}
           canEdit={canEdit}
           onClose={() => setSelectedEvolution(null)}
-          onOpenFeature={() => {
-            const featureId = selectedEvolution.item.featureId;
-            const implId = selectedEvolution.item.id;
-            setSelectedEvolution(null);
-            setQuickViewFeatureId(featureId);
-            setQuickViewImplId(implId);
-          }}
         />
       ) : null}
     </div>

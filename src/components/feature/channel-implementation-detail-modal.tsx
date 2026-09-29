@@ -1,11 +1,18 @@
 "use client";
 
-import { useEffect, useId, useRef, useTransition } from "react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  useTransition,
+  type ReactNode,
+} from "react";
 import { useRouter } from "next/navigation";
 import { upsertFeatureChannelContext } from "@/app/actions/crud";
-import { StageBadge } from "@/components/badges/stage-badge";
 import { FeatureComments } from "@/components/feature/feature-comments";
 import { WorkResponsiblesPanel } from "@/components/feature/work-responsibles-panel";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { ActionMenu } from "@/components/ui/action-menu";
 import { Button } from "@/components/ui/button";
 import { evolutionsForFccIds } from "@/lib/channel-implementation-detail";
@@ -17,15 +24,25 @@ import {
   featureStatusOptions,
   gapTypeLabel,
 } from "@/lib/labels";
-import { cn } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 import type {
   FeatureChannelEvaluation,
   FeatureEvolution,
   FeatureMapRow,
   Gap,
-  WorkResponsible,
 } from "@/types";
-import { ExternalLink, ImagePlus, X } from "lucide-react";
+import {
+  Calendar,
+  ExternalLink,
+  Flag,
+  ImagePlus,
+  Layers,
+  Pencil,
+  Plus,
+  Route,
+  Users,
+  X,
+} from "lucide-react";
 
 const FOCUSABLE =
   'a[href],button:not([disabled]),textarea,input,select,[tabindex]:not([tabindex="-1"])';
@@ -46,31 +63,6 @@ export type ChannelImplementationCard = {
   fccIds: string[];
   primaryContext: FeatureMapRow;
 };
-
-function responsibleLabel(ctx: FeatureMapRow): string {
-  const structured = (ctx.responsibles ?? [])
-    .map((r: WorkResponsible) => r.displayName.trim())
-    .filter(Boolean);
-  if (structured.length) return structured.join(", ");
-  return ctx.responsible?.trim() || "";
-}
-
-function Meta({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="min-w-0">
-      <dt className="text-[11px] font-semibold tracking-[0.06em] text-slate-400 uppercase">
-        {label}
-      </dt>
-      <dd className="mt-0.5 truncate text-sm text-slate-800">{value}</dd>
-    </div>
-  );
-}
 
 function toInputDate(value: string | null | undefined) {
   if (!value) return "";
@@ -116,16 +108,19 @@ export function ChannelImplementationDetailModal({
   const titleId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
-  const [saving, startSave] = useTransition();
+  const [editingNotes, setEditingNotes] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const [pending, startTransition] = useTransition();
 
   const ctx = card.primaryContext;
   const fccId = ctx.featureChannelContextId;
-  const productLine = card.products.map((p) => p.shortName).join(" · ");
-  const contextLine = [
-    card.audienceName,
-    card.momentName,
-    card.temporalStatus === "FUTURE" ? "Futuro" : null,
-    productLine || null,
+  const productLabel =
+    card.products.map((p) => p.shortName).join(" · ") ||
+    ctx.productShortName ||
+    "—";
+  const channelProductLine = [
+    card.channelName,
+    productLabel !== "—" ? productLabel : null,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -141,10 +136,14 @@ export function ChannelImplementationDetailModal({
       ? "Sem evidências suficientes"
       : SIGNAL_LABEL[ctx.healthSignal] ?? ctx.healthSignal;
 
-  const responsible = responsibleLabel(ctx) || card.responsible.trim();
   const notes = (ctx.notes || card.notes || "").trim();
   const hasImage = Boolean(card.experienceImageUrl);
-  const stageLabel = featureStageLabel[card.phase] ?? card.phase;
+  const structuredResponsibles = ctx.responsibles ?? [];
+  const fallbackResponsible =
+    structuredResponsibles.length === 0 &&
+    (ctx.responsible?.trim() || card.responsible.trim())
+      ? ctx.responsible?.trim() || card.responsible.trim()
+      : null;
 
   useEffect(() => {
     previouslyFocused.current =
@@ -195,49 +194,73 @@ export function ChannelImplementationDetailModal({
     };
   }, [onClose]);
 
-  function saveImplementation(formData: FormData) {
+  function patchContext(fields: Record<string, string>) {
     if (!canEdit) return;
-    formData.set("id", fccId);
-    formData.set("feature_id", featureId);
-    formData.set("channel_context_id", ctx.channelContextId);
-    formData.set("product_id", ctx.productId);
-    formData.set("experience", ctx.experience);
-    formData.set("status", ctx.status);
+    const fd = new FormData();
+    fd.set("id", fccId);
+    fd.set("feature_id", featureId);
+    fd.set("channel_context_id", ctx.channelContextId);
+    fd.set("product_id", ctx.productId);
+    fd.set("experience", ctx.experience);
+    fd.set("status", ctx.status);
+    fd.set("phase", fields.phase ?? card.phase);
+    fd.set("responsible", ctx.responsible);
+    fd.set("notes", fields.notes ?? notes);
+    if (fields.figma_url !== undefined) {
+      fd.set("figma_url", fields.figma_url);
+    } else if (card.figmaUrl) {
+      fd.set("figma_url", card.figmaUrl);
+    }
+    if (fields.ticket_number !== undefined) {
+      fd.set("ticket_number", fields.ticket_number);
+    } else if (card.ticketNumber) {
+      fd.set("ticket_number", card.ticketNumber);
+    }
+    if (fields.start_date !== undefined) {
+      if (fields.start_date) fd.set("start_date", fields.start_date);
+    } else if (ctx.startDate) {
+      fd.set("start_date", ctx.startDate.slice(0, 10));
+    }
+    if (fields.expected_date !== undefined) {
+      if (fields.expected_date) fd.set("expected_date", fields.expected_date);
+    } else if (ctx.expectedDate) {
+      fd.set("expected_date", ctx.expectedDate.slice(0, 10));
+    }
     if (ctx.launchDate) {
-      formData.set("launch_date", ctx.launchDate.slice(0, 10));
+      fd.set("launch_date", ctx.launchDate.slice(0, 10));
     }
     if (ctx.experienceImageUrl) {
-      formData.set("experience_image_url", ctx.experienceImageUrl);
+      fd.set("experience_image_url", ctx.experienceImageUrl);
     }
-    startSave(async () => {
-      const result = await upsertFeatureChannelContext(formData);
+    startTransition(async () => {
+      const result = await upsertFeatureChannelContext(fd);
       if (!result.ok) {
         alert(result.message);
         return;
       }
+      setEditingNotes(false);
       router.refresh();
     });
   }
 
-  const menuItems = [
-    { label: "Editar implementação (completo)", onSelect: onEdit },
-    { label: "Duplicar implementação", onSelect: onDuplicate },
-    ...(!hasImage
-      ? [{ label: "Adicionar screenshot", onSelect: onAddScreenshot }]
-      : []),
-    ...(!card.figmaUrl
-      ? [{ label: "Adicionar link do Figma", onSelect: onAddFigma }]
-      : []),
-    {
-      label: "Adicionar evolução",
-      onSelect: onCreateEvolution,
-    },
-    {
-      label: "Remover implementação",
-      tone: "danger" as const,
-      onSelect: onRemove,
-    },
-  ];
+  const menuItems = canEdit
+    ? [
+        { label: "Editar implementação", onSelect: onEdit },
+        { label: "Duplicar implementação", onSelect: onDuplicate },
+        ...(!hasImage
+          ? [{ label: "Adicionar screenshot", onSelect: onAddScreenshot }]
+          : []),
+        ...(!card.figmaUrl
+          ? [{ label: "Adicionar link do Figma", onSelect: onAddFigma }]
+          : []),
+        { label: "Adicionar evolução", onSelect: onCreateEvolution },
+        {
+          label: "Remover implementação",
+          tone: "danger" as const,
+          onSelect: () => setConfirmRemove(true),
+        },
+      ]
+    : [];
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center p-3 sm:p-6">
@@ -261,26 +284,18 @@ export function ChannelImplementationDetailModal({
         <header className="flex shrink-0 items-start justify-between gap-3 border-b border-[var(--border)] px-5 py-4 sm:px-6">
           <div className="min-w-0">
             <p className="inline-flex items-center gap-1.5 text-[11px] font-semibold tracking-[0.08em] text-slate-400 uppercase">
-              Canal
+              <span aria-hidden>●</span>
+              Implementação
             </p>
             <h2
               id={titleId}
-              className="mt-1 text-xl font-semibold tracking-tight text-slate-900"
+              className="mt-1.5 text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl"
             >
-              {card.channelName}
+              {featureName}
             </h2>
-            <p className="mt-1 text-sm text-slate-500">{contextLine}</p>
-            {!canEdit ? (
-              <p className="mt-2 inline-flex items-center gap-1.5 text-sm font-semibold text-slate-900">
-                <span className="text-slate-400" aria-hidden>
-                  ●
-                </span>
-                {stageLabel}
-              </p>
-            ) : null}
           </div>
           <div className="flex shrink-0 items-center gap-1">
-            {canEdit ? (
+            {menuItems.length > 0 ? (
               <ActionMenu label="Mais ações" items={menuItems} />
             ) : null}
             <button
@@ -294,151 +309,204 @@ export function ChannelImplementationDetailModal({
           </div>
         </header>
 
-        <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-5 py-5 sm:px-6">
-          <section className="rounded-xl border border-[var(--border)] bg-slate-50/80 px-4 py-4">
-            <h3 className="text-[11px] font-semibold tracking-[0.08em] text-slate-500 uppercase">
-              Identidade do contexto
+        <div className="min-h-0 flex-1 space-y-7 overflow-y-auto px-5 py-5 sm:px-6">
+          <section className="space-y-4">
+            <h3 className="text-[11px] font-semibold tracking-[0.08em] text-slate-400 uppercase">
+              Contexto
             </h3>
-            <dl className="mt-3 grid gap-3 sm:grid-cols-2">
-              <Meta label="Canal" value={card.channelName} />
-              <Meta label="Produto" value={productLine || "—"} />
-              <Meta label="Público" value={card.audienceName || "—"} />
-              <Meta label="Momento" value={card.momentName || "—"} />
-              {!canEdit ? (
-                <>
-                  <div className="min-w-0">
-                    <dt className="text-[11px] font-semibold tracking-[0.06em] text-slate-400 uppercase">
-                      Status
-                    </dt>
-                    <dd className="mt-1">
-                      <StageBadge stage={card.phase} />
-                    </dd>
-                  </div>
-                  {card.ticketNumber ? (
-                    <Meta label="Ticket TI" value={card.ticketNumber} />
-                  ) : null}
-                  {responsible ? (
-                    <Meta label="Responsável" value={responsible} />
-                  ) : null}
-                </>
-              ) : null}
-            </dl>
-            <p className="mt-3 text-xs text-slate-400">
-              Funcionalidade: {featureName}
-            </p>
 
-            {canEdit ? (
-              <form
-                key={fccId}
-                action={saveImplementation}
-                className="mt-4 space-y-3 border-t border-slate-200/80 pt-4"
-              >
-                <p className="text-[11px] font-semibold tracking-[0.06em] text-slate-500 uppercase">
-                  Editar implementação
-                </p>
-                <label className="block space-y-1 text-xs font-medium text-slate-600">
-                  Status
+            <div className="flex flex-wrap items-center gap-2">
+              {canEdit ? (
+                <label className="relative inline-flex">
+                  <span className="sr-only">Status</span>
                   <select
-                    name="phase"
-                    defaultValue={card.phase}
-                    className="h-9 w-full rounded-lg border border-[var(--border)] bg-white px-2 text-sm"
+                    value={card.phase}
+                    disabled={pending}
+                    onChange={(e) => patchContext({ phase: e.target.value })}
+                    className="appearance-none rounded-full border-0 bg-violet-100 py-1.5 pr-7 pl-3 text-sm font-semibold text-violet-900 outline-none focus:ring-2 focus:ring-violet-300"
                   >
                     {featureStatusOptions().map((opt) => (
                       <option key={opt.value} value={opt.value}>
-                        {opt.label}
+                        ● {opt.label}
                       </option>
                     ))}
                   </select>
                 </label>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="block space-y-1 text-xs font-medium text-slate-600">
-                    Data início
-                    <input
-                      type="date"
-                      name="start_date"
-                      defaultValue={toInputDate(ctx.startDate)}
-                      className="h-9 w-full rounded-lg border border-[var(--border)] bg-white px-2 text-sm"
-                    />
-                  </label>
-                  <label className="block space-y-1 text-xs font-medium text-slate-600">
-                    Previsão
-                    <input
-                      type="date"
-                      name="expected_date"
-                      defaultValue={toInputDate(ctx.expectedDate)}
-                      className="h-9 w-full rounded-lg border border-[var(--border)] bg-white px-2 text-sm"
-                    />
-                  </label>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-violet-100 px-3 py-1 text-sm font-semibold text-violet-900">
+                  <span aria-hidden>●</span>
+                  {featureStageLabel[card.phase] ?? card.phase}
+                </span>
+              )}
+            </div>
+
+            <p className="text-base font-medium text-slate-800">
+              {channelProductLine}
+            </p>
+
+            <dl className="grid gap-4 sm:grid-cols-2">
+              <Property
+                icon={<Users className="h-3.5 w-3.5" />}
+                label="Público"
+                value={card.audienceName || "—"}
+              />
+              <Property
+                icon={<Flag className="h-3.5 w-3.5" />}
+                label="Momento"
+                value={card.momentName || "—"}
+              />
+              <Property
+                icon={<Route className="h-3.5 w-3.5" />}
+                label="Jornada"
+                value={ctx.journeyName || "—"}
+              />
+              <Property
+                icon={<Layers className="h-3.5 w-3.5" />}
+                label="Produto"
+                value={productLabel}
+              />
+              <Property
+                icon={<Flag className="h-3.5 w-3.5" />}
+                label="Necessidade"
+                value={ctx.userNeedName || ctx.featureDescription || "—"}
+                className="sm:col-span-2"
+              />
+              {card.ticketNumber || canEdit ? (
+                <div className="min-w-0 sm:col-span-2">
+                  <dt className="text-[11px] font-semibold tracking-wide text-slate-400 uppercase">
+                    Ticket TI
+                  </dt>
+                  <dd className="mt-1">
+                    {canEdit ? (
+                      <input
+                        type="text"
+                        defaultValue={card.ticketNumber ?? ""}
+                        key={`ticket-${card.ticketNumber ?? ""}`}
+                        placeholder="CHM-123456"
+                        disabled={pending}
+                        onBlur={(e) => {
+                          const next = e.target.value.trim();
+                          if (next !== (card.ticketNumber ?? "")) {
+                            patchContext({ ticket_number: next });
+                          }
+                        }}
+                        className="h-9 w-full max-w-xs rounded-lg border border-transparent bg-slate-50 px-3 text-sm font-medium text-slate-900 hover:border-[var(--border)] focus:border-[var(--border)] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[var(--brand-ring)]"
+                      />
+                    ) : (
+                      <span className="text-sm font-medium text-slate-900">
+                        {card.ticketNumber}
+                      </span>
+                    )}
+                  </dd>
                 </div>
-                <label className="block space-y-1 text-xs font-medium text-slate-600">
-                  Ticket TI
-                  <input
-                    name="ticket_number"
-                    defaultValue={card.ticketNumber ?? ""}
-                    placeholder="CHM-123456"
-                    className="h-9 w-full rounded-lg border border-[var(--border)] bg-white px-3 text-sm"
-                  />
-                </label>
-                <label className="block space-y-1 text-xs font-medium text-slate-600">
-                  Link do Figma
-                  <input
-                    name="figma_url"
-                    type="url"
-                    defaultValue={card.figmaUrl ?? ""}
-                    placeholder="https://figma.com/…"
-                    className="h-9 w-full rounded-lg border border-[var(--border)] bg-white px-3 text-sm"
-                  />
-                </label>
-                <div className="space-y-1">
-                  <p className="text-xs font-medium text-slate-600">
-                    Responsável
-                  </p>
-                  <WorkResponsiblesPanel
-                    owner={{
-                      kind: "FCC",
-                      featureChannelContextId: fccId,
-                    }}
-                    initialResponsibles={ctx.responsibles ?? []}
-                    canEdit
-                    compact
-                  />
-                  <input
-                    name="responsible"
-                    defaultValue={ctx.responsible}
-                    placeholder="Responsável"
-                    className="mt-2 h-9 w-full rounded-lg border border-[var(--border)] bg-white px-3 text-sm"
-                  />
-                </div>
-                <label className="block space-y-1 text-xs font-medium text-slate-600">
-                  Notas
-                  <textarea
-                    name="notes"
-                    rows={3}
-                    defaultValue={notes}
-                    className="w-full rounded-lg border border-[var(--border)] bg-white px-3 py-2 text-sm"
-                  />
-                </label>
-                <div className="flex flex-wrap justify-end gap-2">
+              ) : null}
+            </dl>
+          </section>
+
+          <section className="space-y-4">
+            <h3 className="text-[11px] font-semibold tracking-[0.08em] text-slate-400 uppercase">
+              Acompanhamento
+            </h3>
+            <div className="space-y-2">
+              <p className="text-[11px] font-semibold tracking-wide text-slate-400 uppercase">
+                Responsável
+              </p>
+              <p className="text-[10px] text-slate-400">
+                Quem executa ou acompanha esta entrega
+              </p>
+              <WorkResponsiblesPanel
+                owner={{
+                  kind: "FCC",
+                  featureChannelContextId: fccId,
+                }}
+                initialResponsibles={structuredResponsibles}
+                canEdit={canEdit}
+                compact
+                hideTitle
+              />
+              {fallbackResponsible ? (
+                <p className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-white px-2.5 py-1 text-sm font-medium text-slate-800">
+                  {fallbackResponsible}
+                </p>
+              ) : null}
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <InlineDate
+                label="Início"
+                value={ctx.startDate}
+                canEdit={canEdit}
+                pending={pending}
+                onChange={(next) => patchContext({ start_date: next })}
+              />
+              <InlineDate
+                label="Previsão de entrega"
+                value={ctx.expectedDate}
+                canEdit={canEdit}
+                pending={pending}
+                onChange={(next) => patchContext({ expected_date: next })}
+              />
+            </div>
+          </section>
+
+          <section className="space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-[11px] font-semibold tracking-[0.08em] text-slate-400 uppercase">
+                Notas
+              </h3>
+              {canEdit && !editingNotes ? (
+                <button
+                  type="button"
+                  onClick={() => setEditingNotes(true)}
+                  className="inline-flex items-center gap-1 text-[11px] font-medium text-[var(--brand)] hover:underline"
+                >
+                  <Pencil className="h-3 w-3" />
+                  Editar
+                </button>
+              ) : null}
+            </div>
+            {editingNotes && canEdit ? (
+              <form
+                className="space-y-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const fd = new FormData(e.currentTarget);
+                  patchContext({ notes: String(fd.get("notes") ?? "") });
+                }}
+              >
+                <textarea
+                  name="notes"
+                  rows={3}
+                  defaultValue={notes}
+                  autoFocus
+                  className="w-full rounded-xl border border-[var(--border)] bg-slate-50 px-3 py-2 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-[var(--brand-ring)]"
+                />
+                <div className="flex justify-end gap-2">
                   <Button
                     type="button"
-                    variant="outline"
+                    variant="ghost"
                     size="sm"
-                    onClick={onEdit}
+                    onClick={() => setEditingNotes(false)}
                   >
-                    Edição completa
+                    Cancelar
                   </Button>
-                  <Button type="submit" size="sm" disabled={saving}>
-                    {saving ? "Salvando…" : "Salvar"}
+                  <Button type="submit" size="sm" disabled={pending}>
+                    {pending ? "Salvando…" : "Salvar"}
                   </Button>
                 </div>
               </form>
-            ) : null}
+            ) : (
+              <div className="rounded-xl bg-slate-50 px-3.5 py-3 text-sm leading-relaxed text-slate-700">
+                {notes || "Nenhuma nota adicionada."}
+              </div>
+            )}
           </section>
 
-          <section>
-            <h3 className="text-sm font-semibold text-slate-900">Experiência</h3>
+          <section className="space-y-3">
+            <h3 className="text-[11px] font-semibold tracking-[0.08em] text-slate-400 uppercase">
+              Experiência
+            </h3>
             {hasImage ? (
-              <div className="mt-3 overflow-hidden rounded-xl border border-[var(--border)] bg-slate-50">
+              <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-slate-50">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={card.experienceImageUrl!}
@@ -467,7 +535,7 @@ export function ChannelImplementationDetailModal({
                 </div>
               </div>
             ) : (
-              <div className="mt-3 rounded-xl border border-dashed border-[var(--border)] px-4 py-6 text-center">
+              <div className="rounded-xl border border-dashed border-[var(--border)] px-4 py-6 text-center">
                 <p className="text-sm text-slate-500">
                   Visualização não disponível
                 </p>
@@ -485,73 +553,106 @@ export function ChannelImplementationDetailModal({
                 ) : null}
               </div>
             )}
-            {!canEdit ? (
-              <div className="mt-3">
-                {card.figmaUrl ? (
-                  <a
-                    href={card.figmaUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 text-sm font-medium text-[var(--brand)] hover:underline"
-                  >
-                    Ver no Figma
-                    <ExternalLink className="h-3.5 w-3.5" aria-hidden />
-                  </a>
-                ) : (
-                  <p className="text-sm text-slate-500">Sem link do Figma</p>
-                )}
-              </div>
-            ) : card.figmaUrl ? (
+            {card.figmaUrl ? (
               <a
                 href={card.figmaUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-[var(--brand)] hover:underline"
+                className="inline-flex items-center gap-1.5 text-sm font-medium text-[var(--brand)] hover:underline"
               >
-                Abrir Figma atual
+                Ver no Figma
                 <ExternalLink className="h-3.5 w-3.5" aria-hidden />
               </a>
+            ) : canEdit ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={onAddFigma}
+              >
+                Adicionar link do Figma
+              </Button>
             ) : null}
           </section>
 
-          {!canEdit ? (
-            <section>
-              <h3 className="text-sm font-semibold text-slate-900">Notas</h3>
-              {notes ? (
-                <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">
-                  {notes}
+          <section className="space-y-2">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <h3 className="text-[11px] font-semibold tracking-[0.08em] text-slate-400 uppercase">
+                  Evolução desta entrega
+                </h3>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  Status da evolução é independente da fase da implementação.
                 </p>
-              ) : (
-                <p className="mt-2 text-sm text-slate-500">
-                  Nenhuma nota nesta implementação.
-                </p>
-              )}
-            </section>
-          ) : null}
+              </div>
+              {canEdit ? (
+                <button
+                  type="button"
+                  onClick={onCreateEvolution}
+                  className="inline-flex items-center gap-1 text-[11px] font-medium text-[var(--brand)] hover:underline"
+                >
+                  <Plus className="h-3 w-3" />
+                  Adicionar evolução
+                </button>
+              ) : null}
+            </div>
+            {channelEvolutions.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-[var(--border)] px-3.5 py-4 text-sm text-slate-500">
+                Nenhuma evolução em andamento
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {channelEvolutions.map((evo) => (
+                  <li key={evo.id}>
+                    <button
+                      type="button"
+                      className="w-full rounded-xl border border-[var(--border)] px-3.5 py-3 text-left hover:bg-slate-50"
+                      onClick={() => onViewEvolution(evo)}
+                    >
+                      <p className="text-sm font-medium text-slate-900">
+                        <span className="mr-1 text-amber-600">✦</span>
+                        {evo.title}
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-slate-500">
+                        {card.channelName}
+                      </p>
+                      <p className="mt-2 text-xs text-slate-500">
+                        {evolutionPhaseLabel(evo.phase)}
+                        {" · "}
+                        {evolutionStatusLabel[evo.status] ?? evo.status}
+                      </p>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
 
-          <section>
-            <h3 className="text-sm font-semibold text-slate-900">Avaliações</h3>
-            <p className="mt-2 text-sm text-slate-700">
+          <section className="space-y-2">
+            <h3 className="text-[11px] font-semibold tracking-[0.08em] text-slate-400 uppercase">
+              Avaliações
+            </h3>
+            <p className="text-sm text-slate-700">
               Saúde da experiência
               <span className="mt-0.5 block font-semibold text-slate-900">
                 {healthLabel}
               </span>
             </p>
             {evaluations.length === 0 ? (
-              <p className="mt-2 text-sm text-slate-500">
+              <p className="text-sm text-slate-500">
                 Nenhuma avaliação neste canal.
               </p>
             ) : (
-              <ul className="mt-3 space-y-2">
+              <ul className="space-y-2">
                 {evaluations.map((ev) => (
                   <li
                     key={ev.id}
-                    className="rounded-lg border border-[var(--border)] px-3 py-2"
+                    className="rounded-xl border border-[var(--border)] px-3.5 py-3"
                   >
                     <p className="text-sm font-medium text-slate-900">
                       {ev.name}
                     </p>
-                    <p className="text-xs text-slate-500">
+                    <p className="mt-0.5 text-xs text-slate-500">
                       {ev.methodCustomName || ev.methodCode || ev.studyType}
                       {ev.evaluatedAt
                         ? ` · ${new Date(ev.evaluatedAt).toLocaleDateString("pt-BR")}`
@@ -563,62 +664,20 @@ export function ChannelImplementationDetailModal({
             )}
           </section>
 
-          <section>
-            <h3 className="text-sm font-semibold text-slate-900">Evoluções</h3>
-            <p className="mt-0.5 text-xs text-slate-500">
-              Status da evolução é independente do status da implementação.
-            </p>
-            {channelEvolutions.length === 0 ? (
-              <p className="mt-2 text-sm text-slate-500">
-                Nenhuma evolução neste canal.
-              </p>
-            ) : (
-              <ul className="mt-3 space-y-2">
-                {channelEvolutions.map((evo) => (
-                  <li key={evo.id}>
-                    <button
-                      type="button"
-                      className="w-full rounded-lg border border-[var(--border)] px-3 py-2 text-left hover:bg-slate-50"
-                      onClick={() => onViewEvolution(evo)}
-                    >
-                      <p className="text-sm font-medium text-slate-900">
-                        {evo.title}
-                      </p>
-                      <p className="mt-0.5 text-xs text-slate-500">
-                        {evolutionPhaseLabel(evo.phase)}
-                        {" · "}
-                        {evolutionStatusLabel[evo.status] ?? evo.status}
-                      </p>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {canEdit ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="mt-3"
-                onClick={onCreateEvolution}
-              >
-                Adicionar evolução
-              </Button>
-            ) : null}
-          </section>
-
-          <section>
-            <h3 className="text-sm font-semibold text-slate-900">Melhorias</h3>
+          <section className="space-y-2">
+            <h3 className="text-[11px] font-semibold tracking-[0.08em] text-slate-400 uppercase">
+              Melhorias
+            </h3>
             {improvements.length === 0 ? (
-              <p className="mt-2 text-sm text-slate-500">
+              <p className="text-sm text-slate-500">
                 Nenhuma melhoria registrada neste canal.
               </p>
             ) : (
-              <ul className="mt-3 space-y-2">
+              <ul className="space-y-2">
                 {improvements.map((g) => (
                   <li
                     key={g.id}
-                    className="rounded-lg border border-[var(--border)] px-3 py-2"
+                    className="rounded-xl border border-[var(--border)] px-3.5 py-3"
                   >
                     <p className="text-[11px] font-semibold tracking-wide text-slate-400 uppercase">
                       {gapTypeLabel[g.type] ?? g.type}
@@ -644,22 +703,99 @@ export function ChannelImplementationDetailModal({
           />
         </div>
 
-        <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-[var(--border)] px-5 py-3 sm:px-6">
-          <a
-            href={`/funcionalidades/${featureId}`}
-            className="text-sm font-medium text-[var(--brand)] hover:underline"
-            onClick={(e) => {
-              e.preventDefault();
-              onClose();
-            }}
-          >
-            Ver ficha da funcionalidade →
-          </a>
-          <Button type="button" variant="outline" size="sm" onClick={onClose}>
-            Fechar
-          </Button>
+        <footer className="shrink-0 border-t border-[var(--border)] px-5 py-3 sm:px-6">
+          <p className="text-[11px] text-slate-400">
+            Consulta rápida · Ficha da funcionalidade
+          </p>
         </footer>
       </div>
+
+      <ConfirmDialog
+        open={confirmRemove}
+        title="Remover implementação?"
+        description="Esta ação remove apenas esta implementação/contexto. A funcionalidade e outros canais permanecem."
+        confirmLabel="Remover implementação"
+        cancelLabel="Cancelar"
+        tone="danger"
+        onCancel={() => setConfirmRemove(false)}
+        onConfirm={() => {
+          setConfirmRemove(false);
+          onRemove();
+        }}
+      />
     </div>
+  );
+}
+
+function Property({
+  icon,
+  label,
+  value,
+  className,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: string;
+  className?: string;
+}) {
+  return (
+    <div className={cn("min-w-0", className)}>
+      <dt className="inline-flex items-center gap-1.5 text-[11px] font-semibold tracking-wide text-slate-400 uppercase">
+        <span className="text-slate-400" aria-hidden>
+          {icon}
+        </span>
+        {label}
+      </dt>
+      <dd className="mt-1 text-sm font-medium text-slate-900">{value}</dd>
+    </div>
+  );
+}
+
+function InlineDate({
+  label,
+  value,
+  canEdit,
+  pending,
+  onChange,
+}: {
+  label: string;
+  value: string | null;
+  canEdit: boolean;
+  pending: boolean;
+  onChange: (next: string) => void;
+}) {
+  if (!canEdit) {
+    return (
+      <div>
+        <p className="inline-flex items-center gap-1.5 text-[11px] font-semibold tracking-wide text-slate-400 uppercase">
+          <Calendar className="h-3.5 w-3.5" aria-hidden />
+          {label}
+        </p>
+        <p className="mt-1 text-sm font-medium text-slate-900">
+          {formatDate(value)}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <label className="block">
+      <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold tracking-wide text-slate-400 uppercase">
+        <Calendar className="h-3.5 w-3.5" aria-hidden />
+        {label}
+      </span>
+      <input
+        type="date"
+        disabled={pending}
+        defaultValue={toInputDate(value)}
+        key={`${label}-${value ?? "empty"}`}
+        onBlur={(e) => {
+          const next = e.target.value;
+          const prev = toInputDate(value);
+          if (next !== prev) onChange(next);
+        }}
+        className="mt-1 h-9 w-full rounded-lg border border-transparent bg-slate-50 px-2 text-sm font-medium text-slate-900 hover:border-[var(--border)] focus:border-[var(--border)] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[var(--brand-ring)]"
+      />
+    </label>
   );
 }
