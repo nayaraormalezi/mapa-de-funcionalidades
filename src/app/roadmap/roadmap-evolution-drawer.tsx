@@ -299,7 +299,7 @@ export function RoadmapEvolutionDrawer({
                 <input
                   name="responsible"
                   defaultValue={evo.responsible}
-                  placeholder="Nome livre (legado)"
+                  placeholder="Responsável"
                   className="mt-2 h-9 w-full rounded-lg border border-[var(--border)] bg-white px-3 text-sm"
                 />
               </div>

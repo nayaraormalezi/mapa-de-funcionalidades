@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { buildQuickViewSecondaryActions } from "./roadmap-quick-view-actions.ts";
 
 /** Helpers espelhando a resolução de contexto do quick view (teste puro). */
 function resolvePrimary<T extends { id: string }>(
@@ -40,5 +41,20 @@ assert.ok(!othersFromSuper.some((c) => c.id === "fcc-super"));
 const othersFromArea = otherContextsExcludingPrimary(contexts, fromArea?.id);
 assert.equal(othersFromArea.length, 1);
 assert.equal(othersFromArea[0]?.id, "fcc-super");
+
+const menuEdit = buildQuickViewSecondaryActions(true);
+assert.equal(menuEdit.length, 2);
+assert.ok(
+  !menuEdit.some((i) =>
+    /ficha|detalhes/i.test(i.label),
+  ),
+  "menu must not duplicate ficha CTA",
+);
+assert.equal(menuEdit[0]?.label, "Duplicar implementação");
+assert.equal(menuEdit[1]?.label, "Remover implementação");
+assert.equal(menuEdit[1]?.tone, "danger");
+
+const menuViewer = buildQuickViewSecondaryActions(false);
+assert.equal(menuViewer.length, 0);
 
 console.log("roadmap-quick-view.assert: ok");

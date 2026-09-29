@@ -6,12 +6,15 @@ import {
   useRef,
   useState,
   useTransition,
+  type ReactNode,
 } from "react";
 import { useRouter } from "next/navigation";
 import {
+  archiveRecord,
   upsertFeatureChannelContext,
   upsertFeatureEvolution,
 } from "@/app/actions/crud";
+import { buildQuickViewSecondaryActions } from "@/app/roadmap/roadmap-quick-view-actions";
 import {
   activeEvolutions,
   doneEvolutions,
@@ -22,6 +25,7 @@ import {
 import { PriorityBadge } from "@/components/badges/priority-badge";
 import { FeatureComments } from "@/components/feature/feature-comments";
 import { WorkResponsiblesPanel } from "@/components/feature/work-responsibles-panel";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { ActionMenu } from "@/components/ui/action-menu";
 import { Button } from "@/components/ui/button";
 import {
@@ -32,11 +36,17 @@ import {
   featureStatusOptions,
   priorityLabel,
 } from "@/lib/labels";
-import { cn } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 import type { Priority, RoadmapPhase } from "@/types";
 import {
+  Calendar,
   ExternalLink,
+  Flag,
+  Layers,
+  Pencil,
   Plus,
+  Route,
+  Users,
   X,
 } from "lucide-react";
 
@@ -60,7 +70,6 @@ export function RoadmapFeatureQuickView({
   featureId: string;
   featureName: string;
   contexts: RoadmapImpl[];
-  /** Implementação clicada (destaque de status). */
   focusImplId?: string | null;
   canEdit: boolean;
   onClose: () => void;
@@ -72,9 +81,10 @@ export function RoadmapFeatureQuickView({
   const previouslyFocused = useRef<HTMLElement | null>(null);
   const [addingFor, setAddingFor] = useState(false);
   const [showOtherContexts, setShowOtherContexts] = useState(false);
-  const [savingDelivery, startSaveDelivery] = useTransition();
+  const [editingNotes, setEditingNotes] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const [pending, startTransition] = useTransition();
 
-  /** Contexto que originou o clique — nunca o primeiro da lista por acaso. */
   const primary =
     (focusImplId
       ? contexts.find((c) => c.id === focusImplId)
@@ -89,8 +99,15 @@ export function RoadmapFeatureQuickView({
 
   const deliveryActive = primary ? activeEvolutions(primary) : [];
   const deliveryDone = primary ? doneEvolutions(primary) : [];
-
   const statusPhase: RoadmapPhase | null = primary?.phase ?? null;
+
+  const productLabel =
+    primary?.productShortName || primary?.productName || "—";
+  const channelProductLine = primary
+    ? [primary.channelName, productLabel !== "—" ? productLabel : null]
+        .filter(Boolean)
+        .join(" · ")
+    : "";
 
   useEffect(() => {
     previouslyFocused.current =
@@ -146,19 +163,59 @@ export function RoadmapFeatureQuickView({
     router.push(`/funcionalidades/${featureId}`);
   }
 
-  function saveDelivery(formData: FormData) {
+  function patchPrimary(fields: Record<string, string>) {
     if (!primary || !canEdit) return;
-    formData.set("id", primary.id);
-    formData.set("feature_id", primary.featureId);
-    formData.set("channel_context_id", primary.channelContextId);
-    formData.set("product_id", primary.productId);
-    formData.set("experience", primary.experience);
-    formData.set("status", primary.status);
-    if (primary.launchDate) {
-      formData.set("launch_date", primary.launchDate.slice(0, 10));
+    const fd = new FormData();
+    fd.set("id", primary.id);
+    fd.set("feature_id", primary.featureId);
+    fd.set("channel_context_id", primary.channelContextId);
+    fd.set("product_id", primary.productId);
+    fd.set("experience", primary.experience);
+    fd.set("status", primary.status);
+    fd.set("phase", fields.phase ?? primary.phase);
+    fd.set("responsible", primary.responsible);
+    fd.set("notes", fields.notes ?? primary.notes ?? "");
+    if (fields.start_date !== undefined) {
+      if (fields.start_date) fd.set("start_date", fields.start_date);
+    } else if (primary.startDate) {
+      fd.set("start_date", primary.startDate.slice(0, 10));
     }
-    startSaveDelivery(async () => {
-      const result = await upsertFeatureChannelContext(formData);
+    if (fields.expected_date !== undefined) {
+      if (fields.expected_date) fd.set("expected_date", fields.expected_date);
+    } else if (primary.expectedDate) {
+      fd.set("expected_date", primary.expectedDate.slice(0, 10));
+    }
+    if (primary.launchDate) {
+      fd.set("launch_date", primary.launchDate.slice(0, 10));
+    }
+    startTransition(async () => {
+      const result = await upsertFeatureChannelContext(fd);
+      if (!result.ok) {
+        alert(result.message);
+        return;
+      }
+      setEditingNotes(false);
+      router.refresh();
+    });
+  }
+
+  function duplicateImplementation() {
+    if (!primary || !canEdit) return;
+    const fd = new FormData();
+    fd.set("feature_id", primary.featureId);
+    fd.set("channel_context_id", primary.channelContextId);
+    fd.set("product_id", primary.productId);
+    fd.set("phase", primary.phase);
+    fd.set("experience", primary.experience);
+    fd.set("responsible", primary.responsible);
+    fd.set("notes", primary.notes || "");
+    if (primary.expectedDate)
+      fd.set("expected_date", primary.expectedDate.slice(0, 10));
+    if (primary.launchDate)
+      fd.set("launch_date", primary.launchDate.slice(0, 10));
+    if (primary.startDate) fd.set("start_date", primary.startDate.slice(0, 10));
+    startTransition(async () => {
+      const result = await upsertFeatureChannelContext(fd);
       if (!result.ok) {
         alert(result.message);
         return;
@@ -166,6 +223,37 @@ export function RoadmapFeatureQuickView({
       router.refresh();
     });
   }
+
+  function removeImplementation() {
+    if (!primary || !canEdit) return;
+    startTransition(async () => {
+      const result = await archiveRecord(
+        "feature_channel_contexts",
+        primary.id,
+      );
+      if (!result.ok) {
+        alert(result.message);
+        return;
+      }
+      setConfirmRemove(false);
+      onClose();
+      router.refresh();
+    });
+  }
+
+  const menuItems = buildQuickViewSecondaryActions(canEdit).map((item) => ({
+    ...item,
+    onSelect:
+      item.label === "Duplicar implementação"
+        ? duplicateImplementation
+        : () => setConfirmRemove(true),
+  }));
+
+  const structuredResponsibles = primary?.responsibles ?? [];
+  const fallbackResponsible =
+    structuredResponsibles.length === 0 && primary?.responsible?.trim()
+      ? primary.responsible.trim()
+      : null;
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center p-3 sm:p-6">
@@ -194,7 +282,7 @@ export function RoadmapFeatureQuickView({
             </p>
             <h2
               id={titleId}
-              className="mt-1.5 text-xl font-semibold tracking-tight text-slate-900"
+              className="mt-1.5 text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl"
             >
               {featureName}
             </h2>
@@ -204,21 +292,15 @@ export function RoadmapFeatureQuickView({
               type="button"
               variant="outline"
               size="sm"
-              className="hidden gap-1.5 sm:inline-flex"
+              className="gap-1.5"
               onClick={openFullSheet}
             >
-              Ver todos os detalhes
+              Ver ficha completa
               <ExternalLink className="h-3.5 w-3.5" aria-hidden />
             </Button>
-            <ActionMenu
-              label="Mais ações"
-              items={[
-                {
-                  label: "Ver todos os detalhes",
-                  onSelect: openFullSheet,
-                },
-              ]}
-            />
+            {menuItems.length > 0 ? (
+              <ActionMenu label="Mais ações" items={menuItems} />
+            ) : null}
             <button
               type="button"
               onClick={onClose}
@@ -230,48 +312,67 @@ export function RoadmapFeatureQuickView({
           </div>
         </header>
 
-        <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-5 py-5 sm:px-6">
-          <button
-            type="button"
-            onClick={openFullSheet}
-            className="inline-flex items-center gap-1 text-sm font-medium text-[var(--brand)] hover:underline sm:hidden"
-          >
-            Ver todos os detalhes →
-          </button>
-
+        <div className="min-h-0 flex-1 space-y-7 overflow-y-auto px-5 py-5 sm:px-6">
           {primary ? (
-            <section className="rounded-xl border border-[var(--border)] bg-slate-50/80 px-4 py-4">
-              <h3 className="text-[11px] font-semibold tracking-[0.08em] text-slate-500 uppercase">
-                Esta entrega
-              </h3>
-              {!canEdit && statusPhase ? (
-                <p className="mt-2 inline-flex items-center gap-1.5 text-base font-semibold text-slate-900">
-                  <span className="text-slate-400" aria-hidden>
-                    ●
+            <section className="space-y-4">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <h3 className="text-[11px] font-semibold tracking-[0.08em] text-slate-400 uppercase">
+                  Contexto
+                </h3>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {canEdit ? (
+                  <label className="relative inline-flex">
+                    <span className="sr-only">Status</span>
+                    <select
+                      value={primary.phase}
+                      disabled={pending}
+                      onChange={(e) => patchPrimary({ phase: e.target.value })}
+                      className="appearance-none rounded-full border-0 bg-violet-100 py-1.5 pr-7 pl-3 text-sm font-semibold text-violet-900 outline-none ring-0 focus:ring-2 focus:ring-violet-300"
+                    >
+                      {featureStatusOptions().map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          ● {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : statusPhase ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-violet-100 px-3 py-1 text-sm font-semibold text-violet-900">
+                    <span aria-hidden>●</span>
+                    {featureStageLabel[statusPhase] ?? statusPhase}
                   </span>
-                  {featureStageLabel[statusPhase] ?? statusPhase}
-                </p>
-              ) : null}
-              <p className="mt-1 text-sm text-slate-600">
-                {primary.channelName}
-                {primary.productShortName
-                  ? ` · ${primary.productShortName}`
-                  : primary.productName
-                    ? ` · ${primary.productName}`
-                    : ""}
+                ) : null}
+              </div>
+
+              <p className="text-base font-medium text-slate-800">
+                {channelProductLine}
               </p>
 
-              <dl className="mt-4 grid gap-3 sm:grid-cols-2">
-                <Meta label="Público" value={primary.audienceName || "—"} />
-                <Meta label="Momento" value={primary.momentName || "—"} />
-                <Meta label="Jornada" value={primary.journeyName || "—"} />
-                <Meta
-                  label="Produto"
-                  value={
-                    primary.productShortName || primary.productName || "—"
-                  }
+              <dl className="grid gap-4 sm:grid-cols-2">
+                <Property
+                  icon={<Users className="h-3.5 w-3.5" />}
+                  label="Público"
+                  value={primary.audienceName || "—"}
                 />
-                <Meta
+                <Property
+                  icon={<Flag className="h-3.5 w-3.5" />}
+                  label="Momento"
+                  value={primary.momentName || "—"}
+                />
+                <Property
+                  icon={<Route className="h-3.5 w-3.5" />}
+                  label="Jornada"
+                  value={primary.journeyName || "—"}
+                />
+                <Property
+                  icon={<Layers className="h-3.5 w-3.5" />}
+                  label="Produto"
+                  value={productLabel}
+                />
+                <Property
+                  icon={<Flag className="h-3.5 w-3.5" />}
                   label="Necessidade"
                   value={
                     primary.userNeedName ||
@@ -281,123 +382,145 @@ export function RoadmapFeatureQuickView({
                   className="sm:col-span-2"
                 />
               </dl>
+            </section>
+          ) : null}
 
-              {canEdit ? (
-                <form
-                  key={primary.id}
-                  action={saveDelivery}
-                  className="mt-4 space-y-3 border-t border-slate-200/80 pt-4"
-                >
-                  <p className="text-[11px] font-semibold tracking-[0.06em] text-slate-500 uppercase">
-                    Editar entrega
+          {primary ? (
+            <section className="space-y-4">
+              <h3 className="text-[11px] font-semibold tracking-[0.08em] text-slate-400 uppercase">
+                Acompanhamento
+              </h3>
+
+              <div className="space-y-2">
+                <p className="text-[11px] font-semibold tracking-wide text-slate-400 uppercase">
+                  Responsável
+                </p>
+                <p className="text-[10px] text-slate-400">
+                  Quem executa ou acompanha esta entrega
+                </p>
+                <WorkResponsiblesPanel
+                  owner={{
+                    kind: "FCC",
+                    featureChannelContextId: primary.id,
+                  }}
+                  initialResponsibles={structuredResponsibles}
+                  canEdit={canEdit}
+                  compact
+                  hideTitle
+                />
+                {fallbackResponsible ? (
+                  <p className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-white px-2.5 py-1 text-sm font-medium text-slate-800">
+                    {fallbackResponsible}
                   </p>
-                  <label className="block space-y-1 text-xs font-medium text-slate-600">
-                    Status da implementação
-                    <select
-                      name="phase"
-                      defaultValue={primary.phase}
-                      className="h-9 w-full rounded-lg border border-[var(--border)] bg-white px-2 text-sm"
+                ) : null}
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <InlineDate
+                  label="Início"
+                  value={primary.startDate}
+                  canEdit={canEdit}
+                  pending={pending}
+                  onChange={(next) => patchPrimary({ start_date: next })}
+                />
+                <InlineDate
+                  label="Previsão de entrega"
+                  value={primary.expectedDate}
+                  canEdit={canEdit}
+                  pending={pending}
+                  onChange={(next) => patchPrimary({ expected_date: next })}
+                />
+              </div>
+            </section>
+          ) : null}
+
+          {primary ? (
+            <section className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-[11px] font-semibold tracking-[0.08em] text-slate-400 uppercase">
+                  Notas
+                </h3>
+                {canEdit && !editingNotes ? (
+                  <button
+                    type="button"
+                    onClick={() => setEditingNotes(true)}
+                    className="inline-flex items-center gap-1 text-[11px] font-medium text-[var(--brand)] hover:underline"
+                  >
+                    <Pencil className="h-3 w-3" />
+                    Editar
+                  </button>
+                ) : null}
+              </div>
+              {editingNotes && canEdit ? (
+                <form
+                  className="space-y-2"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const fd = new FormData(e.currentTarget);
+                    patchPrimary({
+                      notes: String(fd.get("notes") ?? ""),
+                    });
+                  }}
+                >
+                  <textarea
+                    name="notes"
+                    rows={3}
+                    defaultValue={primary.notes}
+                    autoFocus
+                    className="w-full rounded-xl border border-[var(--border)] bg-slate-50 px-3 py-2 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-[var(--brand-ring)]"
+                  />
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setEditingNotes(false)}
                     >
-                      {featureStatusOptions().map((phase) => (
-                        <option key={phase.value} value={phase.value}>
-                          {phase.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <label className="block space-y-1 text-xs font-medium text-slate-600">
-                      Data início
-                      <input
-                        type="date"
-                        name="start_date"
-                        defaultValue={toInputDate(primary.startDate)}
-                        className="h-9 w-full rounded-lg border border-[var(--border)] bg-white px-2 text-sm"
-                      />
-                    </label>
-                    <label className="block space-y-1 text-xs font-medium text-slate-600">
-                      Previsão
-                      <input
-                        type="date"
-                        name="expected_date"
-                        defaultValue={toInputDate(primary.expectedDate)}
-                        className="h-9 w-full rounded-lg border border-[var(--border)] bg-white px-2 text-sm"
-                      />
-                    </label>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-xs font-medium text-slate-600">
-                      Responsável
-                    </p>
-                    <p className="text-[10px] text-slate-400">
-                      Quem executa ou acompanha esta entrega
-                    </p>
-                    <WorkResponsiblesPanel
-                      owner={{
-                        kind: "FCC",
-                        featureChannelContextId: primary.id,
-                      }}
-                      initialResponsibles={primary.responsibles ?? []}
-                      canEdit
-                      compact
-                    />
-                    <input
-                      name="responsible"
-                      defaultValue={primary.responsible}
-                      placeholder="Nome livre (legado)"
-                      className="mt-2 h-9 w-full rounded-lg border border-[var(--border)] bg-white px-3 text-sm"
-                    />
-                  </div>
-                  <label className="block space-y-1 text-xs font-medium text-slate-600">
-                    Notas
-                    <textarea
-                      name="notes"
-                      rows={3}
-                      defaultValue={primary.notes}
-                      className="w-full rounded-lg border border-[var(--border)] bg-white px-3 py-2 text-sm"
-                    />
-                  </label>
-                  <div className="flex justify-end">
-                    <Button type="submit" size="sm" disabled={savingDelivery}>
-                      {savingDelivery ? "Salvando…" : "Salvar entrega"}
+                      Cancelar
+                    </Button>
+                    <Button type="submit" size="sm" disabled={pending}>
+                      {pending ? "Salvando…" : "Salvar"}
                     </Button>
                   </div>
                 </form>
               ) : (
-                <dl className="mt-4 grid gap-3 sm:grid-cols-2">
-                  <Meta
-                    label="Responsável"
-                    value={
-                      primary.responsible?.trim() ? primary.responsible : "—"
-                    }
-                    hint="Quem executa ou acompanha esta entrega"
-                    className="sm:col-span-2"
-                  />
-                  {primary.notes?.trim() ? (
-                    <Meta
-                      label="Notas"
-                      value={primary.notes}
-                      className="sm:col-span-2"
-                    />
-                  ) : null}
-                </dl>
+                <div className="rounded-xl bg-slate-50 px-3.5 py-3 text-sm leading-relaxed text-slate-700">
+                  {primary.notes?.trim()
+                    ? primary.notes
+                    : "Nenhuma nota adicionada."}
+                </div>
               )}
             </section>
           ) : null}
 
-          <section>
-            <h3 className="text-sm font-semibold text-slate-900">
-              Evolução desta entrega
-            </h3>
-            <p className="mt-0.5 text-xs text-slate-500">
-              Status da evolução é independente da fase da implementação.
-            </p>
+          <section className="space-y-2">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <h3 className="text-[11px] font-semibold tracking-[0.08em] text-slate-400 uppercase">
+                  Evolução desta entrega
+                </h3>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  Status da evolução é independente da fase da implementação.
+                </p>
+              </div>
+              {canEdit && primary && !addingFor ? (
+                <button
+                  type="button"
+                  onClick={() => setAddingFor(true)}
+                  className="inline-flex items-center gap-1 text-[11px] font-medium text-[var(--brand)] hover:underline"
+                >
+                  <Plus className="h-3 w-3" />
+                  Adicionar evolução
+                </button>
+              ) : null}
+            </div>
+
             {deliveryActive.length === 0 && deliveryDone.length === 0 ? (
-              <p className="mt-2 text-sm text-slate-500">
+              <p className="rounded-xl border border-dashed border-[var(--border)] px-3.5 py-4 text-sm text-slate-500">
                 Nenhuma evolução em andamento
               </p>
             ) : (
-              <ul className="mt-3 space-y-2">
+              <ul className="space-y-2">
                 {deliveryActive.map((evo) => (
                   <EvolutionCard
                     key={evo.id}
@@ -436,24 +559,12 @@ export function RoadmapFeatureQuickView({
                 ) : null}
               </ul>
             )}
-            {canEdit && primary ? (
-              <div className="mt-3">
-                {!addingFor ? (
-                  <button
-                    type="button"
-                    onClick={() => setAddingFor(true)}
-                    className="inline-flex items-center gap-1 text-[11px] font-medium text-[var(--brand)] hover:underline"
-                  >
-                    <Plus className="h-3 w-3" />
-                    Adicionar evolução
-                  </button>
-                ) : (
-                  <AddEvolutionForm
-                    fccId={primary.id}
-                    onDone={() => setAddingFor(false)}
-                  />
-                )}
-              </div>
+
+            {canEdit && primary && addingFor ? (
+              <AddEvolutionForm
+                fccId={primary.id}
+                onDone={() => setAddingFor(false)}
+              />
             ) : null}
           </section>
 
@@ -481,22 +592,24 @@ export function RoadmapFeatureQuickView({
                 </button>
               </div>
               {showOtherContexts ? (
-                <ul className="mt-3 divide-y divide-slate-100 border-t border-slate-100">
+                <ul className="mt-3 space-y-2 border-t border-slate-100 pt-3">
                   {otherContexts.map((ctx) => (
                     <li
                       key={ctx.id}
-                      className="flex items-start justify-between gap-3 py-2.5"
+                      className="flex items-start justify-between gap-3 rounded-lg border border-[var(--border)] px-3 py-2.5"
                     >
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium text-slate-800">
                           {ctx.channelName}
                         </p>
                         <p className="mt-0.5 text-[11px] text-slate-500">
-                          {ctx.productShortName} · {ctx.audienceName} ·{" "}
-                          {ctx.momentName}
+                          {ctx.audienceName} · {ctx.momentName}
+                          {ctx.productShortName
+                            ? ` · ${ctx.productShortName}`
+                            : ""}
                         </p>
                       </div>
-                      <span className="inline-flex shrink-0 items-center gap-1 text-[11px] text-slate-600">
+                      <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700">
                         <span className="text-slate-400" aria-hidden>
                           ●
                         </span>
@@ -514,24 +627,99 @@ export function RoadmapFeatureQuickView({
           </section>
         </div>
 
-        <footer className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-[var(--border)] px-5 py-3 sm:px-6">
+        <footer className="shrink-0 border-t border-[var(--border)] px-5 py-3 sm:px-6">
           <p className="text-[11px] text-slate-400">
-            {canEdit
-              ? "Edição rápida · dados da esteira"
-              : "Consulta rápida · dados da esteira"}
+            Consulta rápida · Gestão de entregas
           </p>
-          <Button
-            type="button"
-            size="sm"
-            className="gap-1.5"
-            onClick={openFullSheet}
-          >
-            Ver todos os detalhes
-            <ExternalLink className="h-3.5 w-3.5" aria-hidden />
-          </Button>
         </footer>
       </div>
+
+      <ConfirmDialog
+        open={confirmRemove}
+        title="Remover implementação?"
+        description="Esta ação remove apenas esta implementação/contexto. A funcionalidade e outros canais permanecem."
+        confirmLabel={pending ? "Removendo…" : "Remover implementação"}
+        cancelLabel="Cancelar"
+        tone="danger"
+        onCancel={() => {
+          if (!pending) setConfirmRemove(false);
+        }}
+        onConfirm={removeImplementation}
+      />
     </div>
+  );
+}
+
+function Property({
+  icon,
+  label,
+  value,
+  className,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: string;
+  className?: string;
+}) {
+  return (
+    <div className={cn("min-w-0", className)}>
+      <dt className="inline-flex items-center gap-1.5 text-[11px] font-semibold tracking-wide text-slate-400 uppercase">
+        <span className="text-slate-400" aria-hidden>
+          {icon}
+        </span>
+        {label}
+      </dt>
+      <dd className="mt-1 text-sm font-medium text-slate-900">{value}</dd>
+    </div>
+  );
+}
+
+function InlineDate({
+  label,
+  value,
+  canEdit,
+  pending,
+  onChange,
+}: {
+  label: string;
+  value: string | null;
+  canEdit: boolean;
+  pending: boolean;
+  onChange: (next: string) => void;
+}) {
+  if (!canEdit) {
+    return (
+      <div>
+        <p className="inline-flex items-center gap-1.5 text-[11px] font-semibold tracking-wide text-slate-400 uppercase">
+          <Calendar className="h-3.5 w-3.5" aria-hidden />
+          {label}
+        </p>
+        <p className="mt-1 text-sm font-medium text-slate-900">
+          {formatDate(value)}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <label className="block">
+      <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold tracking-wide text-slate-400 uppercase">
+        <Calendar className="h-3.5 w-3.5" aria-hidden />
+        {label}
+      </span>
+      <input
+        type="date"
+        disabled={pending}
+        defaultValue={toInputDate(value)}
+        key={`${label}-${value ?? "empty"}`}
+        onBlur={(e) => {
+          const next = e.target.value;
+          const prev = toInputDate(value);
+          if (next !== prev) onChange(next);
+        }}
+        className="mt-1 h-9 w-full rounded-lg border border-transparent bg-slate-50 px-2 text-sm font-medium text-slate-900 hover:border-[var(--border)] focus:border-[var(--border)] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[var(--brand-ring)]"
+      />
+    </label>
   );
 }
 
@@ -614,7 +802,7 @@ function AddEvolutionForm({
   return (
     <form
       action={handleSubmit}
-      className="mt-3 space-y-2 rounded-lg bg-slate-50 p-3"
+      className="mt-3 space-y-2 rounded-xl border border-[var(--border)] bg-slate-50/80 p-3"
     >
       <input
         name="title"
@@ -658,11 +846,6 @@ function AddEvolutionForm({
           </select>
         </label>
       </div>
-      <input
-        name="responsible"
-        placeholder="Responsável"
-        className="h-9 w-full rounded-lg border border-[var(--border)] bg-white px-3 text-sm"
-      />
       <div className="flex justify-end gap-2 pt-1">
         <Button type="button" variant="ghost" size="sm" onClick={onDone}>
           Cancelar
@@ -672,29 +855,5 @@ function AddEvolutionForm({
         </Button>
       </div>
     </form>
-  );
-}
-
-function Meta({
-  label,
-  value,
-  hint,
-  className,
-}: {
-  label: string;
-  value: string;
-  hint?: string;
-  className?: string;
-}) {
-  return (
-    <div className={className}>
-      <dt className="text-[11px] font-semibold tracking-wide text-slate-400 uppercase">
-        {label}
-      </dt>
-      <dd className="mt-0.5 text-sm text-slate-800">{value}</dd>
-      {hint ? (
-        <p className="mt-0.5 text-[10px] text-slate-400">{hint}</p>
-      ) : null}
-    </div>
   );
 }

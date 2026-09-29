@@ -20,7 +20,7 @@ export function normalizeManualResponsibleKey(name: string): string {
 export function displayWorkResponsibleKind(kind: WorkResponsibleKind): string {
   return kind === "REGISTERED_USER"
     ? "Usuário cadastrado"
-    : "Responsável manual";
+    : "Nome manual";
 }
 
 export type AddWorkResponsibleInput =

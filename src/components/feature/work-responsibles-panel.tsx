@@ -183,7 +183,7 @@ function AddResponsibleForm({
         {(
           [
             { value: "REGISTERED_USER" as const, label: "Usuário cadastrado" },
-            { value: "MANUAL" as const, label: "Responsável manual" },
+            { value: "MANUAL" as const, label: "Nome manual" },
           ] as const
         ).map((opt) => (
           <button
@@ -313,12 +313,15 @@ export function WorkResponsiblesPanel({
   initialResponsibles,
   canEdit,
   compact = false,
+  /** Oculta o título interno (pai já rotula a propriedade). */
+  hideTitle = false,
 }: {
   owner: Owner;
   initialResponsibles: WorkResponsible[];
   canEdit: boolean;
   /** Versão enxuta para footer de cards. */
   compact?: boolean;
+  hideTitle?: boolean;
 }) {
   const [items, setItems] = useState(initialResponsibles);
   const [adding, setAdding] = useState(false);
@@ -335,7 +338,20 @@ export function WorkResponsiblesPanel({
 
   return (
     <div className={cn(!compact && "space-y-3")}>
-      {!compact ? (
+      {hideTitle ? (
+        canEdit && !adding ? (
+          <div className="flex justify-end">
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 text-[11px] font-medium text-[var(--brand)] hover:underline"
+              onClick={() => setAdding(true)}
+            >
+              <Plus className="h-3 w-3" />
+              Adicionar
+            </button>
+          </div>
+        ) : null
+      ) : !compact ? (
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
             <h3 className="text-sm font-semibold tracking-wide text-slate-800 uppercase">
