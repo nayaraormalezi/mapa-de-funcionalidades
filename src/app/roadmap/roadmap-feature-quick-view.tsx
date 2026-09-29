@@ -17,7 +17,6 @@ import {
   type RoadmapImpl,
 } from "@/app/roadmap/roadmap-types";
 import { PriorityBadge } from "@/components/badges/priority-badge";
-import { StageBadge } from "@/components/badges/stage-badge";
 import { FeatureComments } from "@/components/feature/feature-comments";
 import { ActionMenu } from "@/components/ui/action-menu";
 import { Button } from "@/components/ui/button";
@@ -27,7 +26,6 @@ import {
   evolutionStatusLabel,
   featureStageLabel,
   priorityLabel,
-  temporalStatusLabel,
 } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 import type { Priority, RoadmapPhase } from "@/types";
@@ -62,33 +60,24 @@ export function RoadmapFeatureQuickView({
   const titleId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
-  const [addingFor, setAddingFor] = useState<string | null>(null);
-  const [showAllImpls, setShowAllImpls] = useState(false);
+  const [addingFor, setAddingFor] = useState(false);
+  const [showOtherContexts, setShowOtherContexts] = useState(false);
 
+  /** Contexto que originou o clique — nunca o primeiro da lista por acaso. */
   const primary =
-    contexts.find((c) => c.id === focusImplId) ?? contexts[0] ?? null;
+    (focusImplId
+      ? contexts.find((c) => c.id === focusImplId)
+      : undefined) ??
+    contexts[0] ??
+    null;
 
-  const audiences = [...new Set(contexts.map((c) => c.audienceName))];
-  const moments = [...new Set(contexts.map((c) => c.momentName))];
-  const journeys = [...new Set(contexts.map((c) => c.journeyName))];
-  const needs = [...new Set(contexts.map((c) => c.userNeedName))];
-  const products = [
-    ...new Set(contexts.map((c) => c.productShortName || c.productName)),
-  ];
-
-  const sortedContexts = contexts
+  const otherContexts = contexts
+    .filter((c) => c.id !== primary?.id)
     .slice()
     .sort((a, b) => a.channelName.localeCompare(b.channelName, "pt-BR"));
-  const visibleContexts = showAllImpls
-    ? sortedContexts
-    : sortedContexts.slice(0, 4);
 
-  const allActive = contexts.flatMap((c) =>
-    activeEvolutions(c).map((e) => ({ ctx: c, evo: e })),
-  );
-  const allDone = contexts.flatMap((c) =>
-    doneEvolutions(c).map((e) => ({ ctx: c, evo: e })),
-  );
+  const deliveryActive = primary ? activeEvolutions(primary) : [];
+  const deliveryDone = primary ? doneEvolutions(primary) : [];
 
   const statusPhase: RoadmapPhase | null = primary?.phase ?? null;
 
@@ -186,14 +175,14 @@ export function RoadmapFeatureQuickView({
               className="hidden gap-1.5 sm:inline-flex"
               onClick={openFullSheet}
             >
-              Abrir ficha completa
+              Ver todos os detalhes
               <ExternalLink className="h-3.5 w-3.5" aria-hidden />
             </Button>
             <ActionMenu
               label="Mais ações"
               items={[
                 {
-                  label: "Abrir ficha completa",
+                  label: "Ver todos os detalhes",
                   onSelect: openFullSheet,
                 },
               ]}
@@ -215,197 +204,102 @@ export function RoadmapFeatureQuickView({
             onClick={openFullSheet}
             className="inline-flex items-center gap-1 text-sm font-medium text-[var(--brand)] hover:underline sm:hidden"
           >
-            Abrir ficha completa →
+            Ver todos os detalhes →
           </button>
 
-          {statusPhase ? (
-            <section className="rounded-xl border border-[var(--border)] bg-slate-50/80 px-4 py-3">
-              <p className="text-[11px] font-semibold tracking-wide text-slate-400 uppercase">
-                Status
-              </p>
-              <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-800">
+          {primary ? (
+            <section className="rounded-xl border border-[var(--border)] bg-slate-50/80 px-4 py-4">
+              <h3 className="text-[11px] font-semibold tracking-[0.08em] text-slate-500 uppercase">
+                Esta entrega
+              </h3>
+              {statusPhase ? (
+                <p className="mt-2 inline-flex items-center gap-1.5 text-base font-semibold text-slate-900">
                   <span className="text-slate-400" aria-hidden>
                     ●
                   </span>
                   {featureStageLabel[statusPhase] ?? statusPhase}
-                </span>
-                <StageBadge stage={statusPhase} />
-                {primary ? (
-                  <span className="text-xs text-slate-500">
-                    {primary.channelName}
-                    {primary.productShortName
-                      ? ` · ${primary.productShortName}`
-                      : ""}
-                  </span>
-                ) : null}
-              </div>
+                </p>
+              ) : null}
+              <p className="mt-1 text-sm text-slate-600">
+                {primary.channelName}
+                {primary.productShortName
+                  ? ` · ${primary.productShortName}`
+                  : primary.productName
+                    ? ` · ${primary.productName}`
+                    : ""}
+              </p>
+
+              <dl className="mt-4 grid gap-3 sm:grid-cols-2">
+                <Meta label="Público" value={primary.audienceName || "—"} />
+                <Meta label="Momento" value={primary.momentName || "—"} />
+                <Meta label="Jornada" value={primary.journeyName || "—"} />
+                <Meta
+                  label="Produto"
+                  value={
+                    primary.productShortName || primary.productName || "—"
+                  }
+                />
+                <Meta
+                  label="Necessidade"
+                  value={
+                    primary.userNeedName ||
+                    primary.featureDescription ||
+                    "—"
+                  }
+                  className="sm:col-span-2"
+                />
+                <Meta
+                  label="Responsável"
+                  value={
+                    primary.responsible?.trim() ? primary.responsible : "—"
+                  }
+                  hint="Quem executa ou acompanha esta entrega"
+                  className="sm:col-span-2"
+                />
+              </dl>
             </section>
           ) : null}
 
           <section>
-            <h3 className="sr-only">Contexto</h3>
-            <dl className="grid gap-3 sm:grid-cols-2">
-              <Meta label="Público" value={audiences.join(", ") || "—"} />
-              <Meta label="Momento" value={moments.join(", ") || "—"} />
-              <Meta label="Jornada" value={journeys.join(", ") || "—"} />
-              <Meta label="Produto" value={products.join(", ") || "—"} />
-              <Meta
-                label="Necessidade"
-                value={
-                  needs.length > 0
-                    ? needs.join(" · ")
-                    : primary?.featureDescription || "—"
-                }
-                className="sm:col-span-2"
-              />
-              <Meta
-                label="Responsável"
-                value={
-                  primary?.responsible?.trim()
-                    ? primary.responsible
-                    : "—"
-                }
-                hint="Quem executa ou acompanha esta entrega"
-              />
-            </dl>
-          </section>
-
-          <section>
-            <div className="flex items-end justify-between gap-2">
-              <div>
-                <h3 className="text-sm font-semibold text-slate-900">
-                  Implementações
-                </h3>
-                <p className="mt-0.5 text-xs text-slate-500">
-                  Fase da implementação (●) é independente das evoluções (✦).
-                </p>
-              </div>
-            </div>
-            {sortedContexts.length === 0 ? (
-              <p className="mt-3 text-sm text-slate-500">
-                Nenhuma implementação cadastrada.
-              </p>
-            ) : (
-              <ul className="mt-3 space-y-2">
-                {visibleContexts.map((ctx) => {
-                  const active = activeEvolutions(ctx);
-                  const focused = ctx.id === primary?.id;
-                  return (
-                    <li
-                      key={ctx.id}
-                      className={cn(
-                        "rounded-xl border px-3.5 py-3",
-                        focused
-                          ? "border-[var(--brand)]/40 bg-[var(--brand-soft)]/30"
-                          : "border-[var(--border)] bg-white",
-                      )}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-medium text-slate-900">
-                            {ctx.channelName}
-                          </p>
-                          <p className="mt-0.5 text-[11px] text-slate-500">
-                            {ctx.productShortName} · {ctx.audienceName} ·{" "}
-                            {ctx.momentName}
-                          </p>
-                        </div>
-                        <div className="flex shrink-0 flex-col items-end gap-1">
-                          <TemporalChip status={ctx.temporalStatus} />
-                          <span className="inline-flex items-center gap-1 text-[11px] text-slate-600">
-                            <span className="text-slate-400">●</span>
-                            <StageBadge stage={ctx.phase} />
-                          </span>
-                        </div>
-                      </div>
-                      {ctx.responsible ? (
-                        <p className="mt-2 text-[11px] text-slate-600">
-                          <span className="font-medium text-slate-500">
-                            Responsável:
-                          </span>{" "}
-                          {ctx.responsible}
-                        </p>
-                      ) : null}
-                      {active.length > 0 ? (
-                        <p className="mt-1.5 text-[11px] font-medium text-amber-700">
-                          ✦{" "}
-                          {active.length === 1
-                            ? "1 evolução em andamento"
-                            : `${active.length} evoluções em andamento`}
-                        </p>
-                      ) : null}
-                      {canEdit ? (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setAddingFor(
-                              addingFor === ctx.id ? null : ctx.id,
-                            )
-                          }
-                          className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-[var(--brand)] hover:underline"
-                        >
-                          <Plus className="h-3 w-3" />
-                          Adicionar evolução
-                        </button>
-                      ) : null}
-                      {addingFor === ctx.id ? (
-                        <AddEvolutionForm
-                          fccId={ctx.id}
-                          onDone={() => setAddingFor(null)}
-                        />
-                      ) : null}
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-            {!showAllImpls && sortedContexts.length > 4 ? (
-              <button
-                type="button"
-                className="mt-2 text-xs font-medium text-[var(--brand)] hover:underline"
-                onClick={() => setShowAllImpls(true)}
-              >
-                Ver todas ({sortedContexts.length})
-              </button>
-            ) : null}
-          </section>
-
-          <section>
-            <h3 className="text-sm font-semibold text-slate-900">Evoluções</h3>
-            {allActive.length === 0 && allDone.length === 0 ? (
+            <h3 className="text-sm font-semibold text-slate-900">
+              Evolução desta entrega
+            </h3>
+            <p className="mt-0.5 text-xs text-slate-500">
+              Status da evolução é independente da fase da implementação.
+            </p>
+            {deliveryActive.length === 0 && deliveryDone.length === 0 ? (
               <p className="mt-2 text-sm text-slate-500">
                 Nenhuma evolução em andamento
               </p>
             ) : (
               <ul className="mt-3 space-y-2">
-                {allActive.map(({ ctx, evo }) => (
+                {deliveryActive.map((evo) => (
                   <EvolutionCard
                     key={evo.id}
                     evo={evo}
-                    channelName={ctx.channelName}
+                    channelName={primary?.channelName ?? ""}
                     onView={
-                      onOpenEvolution
-                        ? () => onOpenEvolution(ctx, evo)
+                      onOpenEvolution && primary
+                        ? () => onOpenEvolution(primary, evo)
                         : undefined
                     }
                   />
                 ))}
-                {allDone.length > 0 ? (
-                  <li className="pt-2">
+                {deliveryDone.length > 0 ? (
+                  <li className="pt-1">
                     <p className="mb-2 text-[11px] font-semibold tracking-wide text-slate-400 uppercase">
                       Histórico
                     </p>
                     <ul className="space-y-2">
-                      {allDone.map(({ ctx, evo }) => (
+                      {deliveryDone.map((evo) => (
                         <EvolutionCard
                           key={evo.id}
                           evo={evo}
-                          channelName={ctx.channelName}
+                          channelName={primary?.channelName ?? ""}
                           done
                           onView={
-                            onOpenEvolution
-                              ? () => onOpenEvolution(ctx, evo)
+                            onOpenEvolution && primary
+                              ? () => onOpenEvolution(primary, evo)
                               : undefined
                           }
                         />
@@ -415,7 +309,78 @@ export function RoadmapFeatureQuickView({
                 ) : null}
               </ul>
             )}
+            {canEdit && primary ? (
+              <div className="mt-3">
+                {!addingFor ? (
+                  <button
+                    type="button"
+                    onClick={() => setAddingFor(true)}
+                    className="inline-flex items-center gap-1 text-[11px] font-medium text-[var(--brand)] hover:underline"
+                  >
+                    <Plus className="h-3 w-3" />
+                    Adicionar evolução
+                  </button>
+                ) : (
+                  <AddEvolutionForm
+                    fccId={primary.id}
+                    onDone={() => setAddingFor(false)}
+                  />
+                )}
+              </div>
+            ) : null}
           </section>
+
+          {otherContexts.length > 0 ? (
+            <section className="rounded-xl border border-dashed border-slate-200 bg-white px-3.5 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <h3 className="text-[11px] font-semibold tracking-[0.06em] text-slate-400 uppercase">
+                    Outros contextos da funcionalidade · {otherContexts.length}
+                  </h3>
+                  <p className="mt-1 text-xs text-slate-500">
+                    A funcionalidade também está presente em outros canais e
+                    contextos.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowOtherContexts((v) => !v)}
+                  className="shrink-0 text-xs font-medium text-[var(--brand)] hover:underline"
+                  aria-expanded={showOtherContexts}
+                >
+                  {showOtherContexts
+                    ? "Ocultar"
+                    : "Ver outros contextos"}
+                </button>
+              </div>
+              {showOtherContexts ? (
+                <ul className="mt-3 divide-y divide-slate-100 border-t border-slate-100">
+                  {otherContexts.map((ctx) => (
+                    <li
+                      key={ctx.id}
+                      className="flex items-start justify-between gap-3 py-2.5"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-slate-800">
+                          {ctx.channelName}
+                        </p>
+                        <p className="mt-0.5 text-[11px] text-slate-500">
+                          {ctx.productShortName} · {ctx.audienceName} ·{" "}
+                          {ctx.momentName}
+                        </p>
+                      </div>
+                      <span className="inline-flex shrink-0 items-center gap-1 text-[11px] text-slate-600">
+                        <span className="text-slate-400" aria-hidden>
+                          ●
+                        </span>
+                        {featureStageLabel[ctx.phase] ?? ctx.phase}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </section>
+          ) : null}
 
           <section>
             <FeatureComments featureId={featureId} compact />
@@ -432,7 +397,7 @@ export function RoadmapFeatureQuickView({
             className="gap-1.5"
             onClick={openFullSheet}
           >
-            Abrir ficha completa
+            Ver todos os detalhes
             <ExternalLink className="h-3.5 w-3.5" aria-hidden />
           </Button>
         </footer>
@@ -600,24 +565,5 @@ function Meta({
         <p className="mt-0.5 text-[10px] text-slate-400">{hint}</p>
       ) : null}
     </div>
-  );
-}
-
-function TemporalChip({
-  status,
-}: {
-  status: RoadmapImpl["temporalStatus"];
-}) {
-  return (
-    <span
-      className={cn(
-        "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold",
-        status === "CURRENT" && "bg-emerald-50 text-emerald-700",
-        status === "FUTURE" && "bg-cyan-50 text-cyan-800",
-        status === "DEPRECATED" && "bg-stone-100 text-stone-600",
-      )}
-    >
-      {temporalStatusLabel[status]}
-    </span>
   );
 }
