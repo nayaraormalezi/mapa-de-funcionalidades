@@ -80,7 +80,7 @@ export async function listFeatureUserProfiles(
   const { data, error } = await supabase
     .from("feature_user_profiles")
     .select(
-      "id, feature_id, user_id, profile_name, created_by, created_at, updated_at, profiles(full_name, email)",
+      "id, feature_id, user_id, profile_name, created_by, created_at, updated_at, profiles!feature_user_profiles_user_id_fkey(full_name, email)",
     )
     .eq("feature_id", id)
     .order("created_at", { ascending: true });

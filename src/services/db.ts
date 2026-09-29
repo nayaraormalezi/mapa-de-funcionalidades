@@ -138,7 +138,8 @@ async function fetchFromSupabase(): Promise<DemoDatabase> {
     supabase
       .from("feature_user_profiles")
       .select(
-        "id, feature_id, user_id, profile_name, created_by, created_at, updated_at, profiles(full_name, email)",
+        // Hint explícito: há 2 FKs para profiles (user_id e created_by).
+        "id, feature_id, user_id, profile_name, created_by, created_at, updated_at, profiles!feature_user_profiles_user_id_fkey(full_name, email)",
       )
       .order("created_at", { ascending: true }),
     supabase.from("channels").select("*").eq("active", true).order("name"),
@@ -175,13 +176,7 @@ async function fetchFromSupabase(): Promise<DemoDatabase> {
     featureJourneys.error && !isMissingRelation(featureJourneys.error)
       ? featureJourneys.error
       : null,
-    featureUserProfiles.error &&
-    !isMissingRelation(featureUserProfiles.error) &&
-    !/Could not find a relationship|relationship between/i.test(
-      featureUserProfiles.error.message ?? "",
-    )
-      ? featureUserProfiles.error
-      : null,
+    // feature_user_profiles: tabela nova/opcional — nunca derruba o carregamento.
     featureEvolutions.error &&
     !isMissingRelation(featureEvolutions.error) &&
     !/relation .*feature_evolutions.* does not exist|Could not find the table/i.test(
@@ -236,7 +231,7 @@ async function fetchFromSupabase(): Promise<DemoDatabase> {
     featureJourneys: (isMissingRelation(featureJourneys.error)
       ? []
       : (featureJourneys.data ?? [])) as FeatureJourneyRow[],
-    featureUserProfiles: (isMissingRelation(featureUserProfiles.error)
+    featureUserProfiles: (featureUserProfiles.error
       ? []
       : (featureUserProfiles.data ?? [])) as FeatureUserProfileRow[],
     channels: (channels.data ?? []) as ChannelRow[],

@@ -135,8 +135,11 @@ export type FeatureUserProfileRow = {
   created_by: string | null;
   created_at: string;
   updated_at: string;
-  /** Join opcional profiles (user_id). */
-  profiles?: { full_name?: string | null; email?: string | null } | null;
+  /** Join opcional profiles (user_id). Pode vir como objeto ou array do PostgREST. */
+  profiles?:
+    | { full_name?: string | null; email?: string | null }
+    | { full_name?: string | null; email?: string | null }[]
+    | null;
 };
 
 export type ChannelRow = {
@@ -535,8 +538,11 @@ export function mapDatabase(rows: {
     })),
     featureUserProfiles: (rows.featureUserProfiles ?? []).map((row) => {
       const isRegistered = Boolean(row.user_id);
-      const fullName = row.profiles?.full_name?.trim() || null;
-      const email = row.profiles?.email?.trim() || null;
+      const profileJoin = Array.isArray(row.profiles)
+        ? row.profiles[0]
+        : row.profiles;
+      const fullName = profileJoin?.full_name?.trim() || null;
+      const email = profileJoin?.email?.trim() || null;
       const manualName = row.profile_name?.trim() || null;
       return {
         id: row.id,
