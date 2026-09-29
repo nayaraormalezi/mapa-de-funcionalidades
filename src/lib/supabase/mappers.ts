@@ -334,10 +334,20 @@ export function mapDatabase(rows: {
   gaps: GapRow[];
 }): DemoDatabase {
   const momentIdsByJourney = new Map<string, string[]>();
+  function addJourneyMoment(journeyId: string, momentId: string) {
+    if (!journeyId || !momentId) return;
+    const list = momentIdsByJourney.get(journeyId) ?? [];
+    if (!list.includes(momentId)) list.push(momentId);
+    momentIdsByJourney.set(journeyId, list);
+  }
   for (const jm of rows.journeyMoments) {
-    const list = momentIdsByJourney.get(jm.journey_id) ?? [];
-    list.push(jm.moment_id);
-    momentIdsByJourney.set(jm.journey_id, list);
+    addJourneyMoment(jm.journey_id, jm.moment_id);
+  }
+  // Fonte canônica pós consolidação: momentos das etapas por público (JAS).
+  // journey_moments pode estar desatualizado (ex.: só jornadas legadas inativas).
+  for (const jas of rows.journeyAudienceStages ?? []) {
+    if (jas.active === false) continue;
+    addJourneyMoment(jas.journey_id, jas.moment_id);
   }
 
   const capabilityById = new Map(

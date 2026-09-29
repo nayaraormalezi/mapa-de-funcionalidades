@@ -218,8 +218,25 @@ export function NovaFuncionalidadeModal({
 
   const journeysForMoment = useMemo(() => {
     if (!momentId) return [];
-    return journeys.filter((j) => j.momentIds.includes(momentId));
-  }, [journeys, momentId]);
+    const fromCatalog = journeys.filter((j) => j.momentIds.includes(momentId));
+    if (fromCatalog.length > 0) return fromCatalog;
+
+    // Fallback: deriva jornadas ativas a partir das etapas (JAS) do momento.
+    const byId = new Map<string, JourneyOption>();
+    for (const stage of journeyAudienceStages) {
+      if (stage.momentId !== momentId || !stage.journeyId) continue;
+      if (byId.has(stage.journeyId)) continue;
+      const catalog = journeys.find((j) => j.value === stage.journeyId);
+      byId.set(stage.journeyId, {
+        value: stage.journeyId,
+        label: catalog?.label ?? stage.displayName,
+        momentIds: catalog?.momentIds?.length
+          ? catalog.momentIds
+          : [momentId],
+      });
+    }
+    return Array.from(byId.values());
+  }, [journeys, journeyAudienceStages, momentId]);
 
   const needsForJourney = useMemo(() => {
     if (!journeyId) return [];
