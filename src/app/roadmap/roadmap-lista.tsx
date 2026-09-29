@@ -17,7 +17,7 @@ export function RoadmapListaView({
   onOpenEvolution,
 }: {
   items: RoadmapImpl[];
-  onOpenFeature: (featureId: string) => void;
+  onOpenFeature: (featureId: string, implId?: string) => void;
   onOpenEvolution: (item: RoadmapImpl, evo: FeatureEvolution) => void;
 }) {
   const groups = groupByFeature(items);
@@ -84,7 +84,7 @@ function FeatureGroup({
   };
   expanded: Record<string, boolean>;
   setExpanded: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
-  onOpenFeature: (featureId: string) => void;
+  onOpenFeature: (featureId: string, implId?: string) => void;
   onOpenEvolution: (item: RoadmapImpl, evo: FeatureEvolution) => void;
 }) {
   return (
@@ -118,7 +118,7 @@ function FeatureGroup({
             <tr className="border-t border-slate-100 hover:bg-slate-50">
               <td
                 className="cursor-pointer px-4 py-2.5 text-xs text-slate-600"
-                onClick={() => onOpenFeature(item.featureId)}
+                onClick={() => onOpenFeature(item.featureId, item.id)}
               >
                 <span className="mr-1.5 text-slate-300">{prefix}</span>
                 {item.featureName}

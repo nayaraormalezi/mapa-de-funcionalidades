@@ -7,7 +7,7 @@ import {
   upsertFeatureEvolution,
 } from "@/app/actions/crud";
 import { RoadmapEvolutionDrawer } from "@/app/roadmap/roadmap-evolution-drawer";
-import { RoadmapFeatureDrawer } from "@/app/roadmap/roadmap-feature-drawer";
+import { RoadmapFeatureQuickView } from "@/app/roadmap/roadmap-feature-quick-view";
 import { RoadmapKanban } from "@/app/roadmap/roadmap-kanban";
 import { RoadmapListaView } from "@/app/roadmap/roadmap-lista";
 import { RoadmapTimelineView } from "@/app/roadmap/roadmap-timeline-view";
@@ -82,7 +82,10 @@ export function RoadmapClient({
   const [evolutionPhase, setEvolutionPhase] = useState("");
   const [search, setSearch] = useState("");
   const [view, setView] = useState<RoadmapViewMode>("kanban");
-  const [drawerFeatureId, setDrawerFeatureId] = useState<string | null>(null);
+  const [quickViewFeatureId, setQuickViewFeatureId] = useState<string | null>(
+    null,
+  );
+  const [quickViewImplId, setQuickViewImplId] = useState<string | null>(null);
   const [selectedEvolution, setSelectedEvolution] = useState<{
     item: RoadmapImpl;
     evo: FeatureEvolution;
@@ -184,13 +187,13 @@ export function RoadmapClient({
     };
   }, [filtered]);
 
-  const drawerContexts = useMemo(() => {
-    if (!drawerFeatureId) return [];
+  const quickViewContexts = useMemo(() => {
+    if (!quickViewFeatureId) return [];
     return items
-      .filter((i) => i.featureId === drawerFeatureId)
+      .filter((i) => i.featureId === quickViewFeatureId)
       .slice()
       .sort((a, b) => a.channelName.localeCompare(b.channelName));
-  }, [items, drawerFeatureId]);
+  }, [items, quickViewFeatureId]);
 
   function clearFilters() {
     setProductId("");
@@ -205,13 +208,15 @@ export function RoadmapClient({
     setSearch("");
   }
 
-  function openFeature(featureId: string) {
+  function openFeature(featureId: string, implId?: string) {
     setSelectedEvolution(null);
-    setDrawerFeatureId(featureId);
+    setQuickViewFeatureId(featureId);
+    setQuickViewImplId(implId ?? null);
   }
 
   function openEvolution(item: RoadmapImpl, evo: FeatureEvolution) {
-    setDrawerFeatureId(null);
+    setQuickViewFeatureId(null);
+    setQuickViewImplId(null);
     const fresh =
       items
         .find((i) => i.id === item.id)
@@ -555,14 +560,18 @@ export function RoadmapClient({
         )}
       </div>
 
-      {drawerFeatureId && drawerContexts.length > 0 ? (
-        <RoadmapFeatureDrawer
-          featureId={drawerFeatureId}
-          featureName={drawerContexts[0].featureName}
-          contexts={drawerContexts}
+      {quickViewFeatureId && quickViewContexts.length > 0 ? (
+        <RoadmapFeatureQuickView
+          featureId={quickViewFeatureId}
+          featureName={quickViewContexts[0].featureName}
+          contexts={quickViewContexts}
+          focusImplId={quickViewImplId}
           canEdit={canEdit}
           onOpenEvolution={openEvolution}
-          onClose={() => setDrawerFeatureId(null)}
+          onClose={() => {
+            setQuickViewFeatureId(null);
+            setQuickViewImplId(null);
+          }}
         />
       ) : null}
 
@@ -574,8 +583,10 @@ export function RoadmapClient({
           onClose={() => setSelectedEvolution(null)}
           onOpenFeature={() => {
             const featureId = selectedEvolution.item.featureId;
+            const implId = selectedEvolution.item.id;
             setSelectedEvolution(null);
-            setDrawerFeatureId(featureId);
+            setQuickViewFeatureId(featureId);
+            setQuickViewImplId(implId);
           }}
         />
       ) : null}

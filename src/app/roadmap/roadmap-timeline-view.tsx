@@ -177,7 +177,7 @@ export function RoadmapTimelineView({
   onOpenEvolution,
 }: {
   items: RoadmapImpl[];
-  onOpenFeature: (featureId: string) => void;
+  onOpenFeature: (featureId: string, implId?: string) => void;
   onOpenEvolution: (item: RoadmapImpl, evo: FeatureEvolution) => void;
 }) {
   const scrollerRef = useRef<HTMLDivElement>(null);
@@ -364,7 +364,7 @@ export function RoadmapTimelineView({
                       barTitle={barTitle}
                       months={months}
                       trackWidth={trackWidth}
-                      onClick={() => onOpenFeature(item.featureId)}
+                      onClick={() => onOpenFeature(item.featureId, item.id)}
                     />
                     {active.map((evo) => {
                       const evoBar = barFromDates(

@@ -46,7 +46,7 @@ export function RoadmapKanban({
 }: {
   items: RoadmapImpl[];
   canEdit: boolean;
-  onOpenFeature: (featureId: string) => void;
+  onOpenFeature: (featureId: string, implId?: string) => void;
   onOpenEvolution: (item: RoadmapImpl, evo: FeatureEvolution) => void;
   onMoveImplPhase: (item: RoadmapImpl, phase: RoadmapPhase) => void;
   onMoveEvoPhase: (
@@ -196,7 +196,7 @@ function KanbanColumn({
   title: string;
   cards: KanbanBoardCard[];
   canEdit: boolean;
-  onOpenFeature: (featureId: string) => void;
+  onOpenFeature: (featureId: string, implId?: string) => void;
   onOpenEvolution: (item: RoadmapImpl, evo: FeatureEvolution) => void;
   muted?: boolean;
   hint?: string;
@@ -236,7 +236,9 @@ function KanbanColumn({
             key={card.id}
             card={card}
             disabled={!canEdit}
-            onOpenFeature={() => onOpenFeature(card.item.featureId)}
+            onOpenFeature={() =>
+              onOpenFeature(card.item.featureId, card.item.id)
+            }
             onOpenEvolution={() => {
               if (card.kind === "evo") {
                 onOpenEvolution(card.item, card.evo);
