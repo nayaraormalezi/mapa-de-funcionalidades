@@ -3,67 +3,17 @@
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { createClient, isSupabaseEnabled } from "@/lib/supabase/server";
+import {
+  buildSignupEmailRedirectTo,
+  friendlyAuthMessage,
+} from "@/lib/auth-messages";
 import { validateCorporateEmail } from "@/lib/corporate-email";
+import { createClient, isSupabaseEnabled } from "@/lib/supabase/server";
 
 export type AuthActionResult = {
   ok: boolean;
   message: string;
 };
-
-function friendlyAuthMessage(
-  context: "login" | "signup" | "reset" | "update-password",
-  technicalMessage: string,
-): string {
-  console.error(`[auth:${context}]`, technicalMessage);
-  const msg = technicalMessage.toLowerCase();
-
-  if (
-    msg.includes("invalid login") ||
-    msg.includes("invalid credentials") ||
-    msg.includes("invalid email or password") ||
-    msg.includes("email not confirmed")
-  ) {
-    if (msg.includes("email not confirmed")) {
-      return "Confirme seu e-mail antes de entrar. Verifique sua caixa de entrada.";
-    }
-    return "Não foi possível entrar. Verifique seu e-mail e senha e tente novamente.";
-  }
-
-  if (
-    msg.includes("user already registered") ||
-    msg.includes("already been registered") ||
-    msg.includes("already registered")
-  ) {
-    return "Este e-mail já possui acesso. Tente entrar ou recupere o acesso com o administrador.";
-  }
-
-  if (msg.includes("password") && msg.includes("least")) {
-    return "A senha deve ter pelo menos 8 caracteres.";
-  }
-
-  if (msg.includes("same password") || msg.includes("different from the old")) {
-    return "Escolha uma senha diferente da atual.";
-  }
-
-  if (msg.includes("rate") || msg.includes("too many")) {
-    return "Muitas tentativas em pouco tempo. Aguarde um momento e tente novamente.";
-  }
-
-  if (context === "login") {
-    return "Não foi possível entrar. Verifique seu e-mail e senha e tente novamente.";
-  }
-
-  if (context === "reset") {
-    return "Não foi possível enviar o link de redefinição. Tente novamente em instantes.";
-  }
-
-  if (context === "update-password") {
-    return "Não foi possível atualizar a senha. Solicite um novo link e tente novamente.";
-  }
-
-  return "Não foi possível criar o acesso agora. Tente novamente em instantes.";
-}
 
 async function getSiteOrigin(): Promise<string> {
   const h = await headers();
@@ -106,7 +56,15 @@ export async function loginAction(
   const { error } = await supabase.auth.signInWithPassword({ email, password });
 
   if (error) {
-    return { ok: false, message: friendlyAuthMessage("login", error.message) };
+    return {
+      ok: false,
+      message: friendlyAuthMessage("login", {
+        message: error.message,
+        code: error.code,
+        status: error.status,
+        name: error.name,
+      }),
+    };
   }
 
   revalidatePath("/", "layout");
@@ -143,17 +101,29 @@ export async function signupAction(
     return { ok: false, message: "A senha deve ter pelo menos 8 caracteres." };
   }
 
+  const origin = await getSiteOrigin();
+  const emailRedirectTo = buildSignupEmailRedirectTo(origin);
+
   const supabase = await createClient();
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
       data: { full_name: fullName || email.split("@")[0] },
+      emailRedirectTo,
     },
   });
 
   if (error) {
-    return { ok: false, message: friendlyAuthMessage("signup", error.message) };
+    return {
+      ok: false,
+      message: friendlyAuthMessage("signup", {
+        message: error.message,
+        code: error.code,
+        status: error.status,
+        name: error.name,
+      }),
+    };
   }
 
   if (!data.session) {
@@ -197,7 +167,15 @@ export async function requestPasswordResetAction(
   });
 
   if (error) {
-    return { ok: false, message: friendlyAuthMessage("reset", error.message) };
+    return {
+      ok: false,
+      message: friendlyAuthMessage("reset", {
+        message: error.message,
+        code: error.code,
+        status: error.status,
+        name: error.name,
+      }),
+    };
   }
 
   return {
@@ -248,7 +226,12 @@ export async function updatePasswordAction(
   if (error) {
     return {
       ok: false,
-      message: friendlyAuthMessage("update-password", error.message),
+      message: friendlyAuthMessage("update-password", {
+        message: error.message,
+        code: error.code,
+        status: error.status,
+        name: error.name,
+      }),
     };
   }
 
