@@ -261,6 +261,26 @@ export interface FeatureJourney {
 }
 
 /**
+ * Perfil de usuário associado à Feature.
+ * Distinto de Público (Cliente/Economiário/Parceiro) e de responsável da task.
+ * REGISTERED_USER → userId; MANUAL_PROFILE → profileName.
+ */
+export interface FeatureUserProfile {
+  id: string;
+  featureId: string;
+  kind: "REGISTERED_USER" | "MANUAL_PROFILE";
+  userId: string | null;
+  profileName: string | null;
+  /** Nome exibido (perfil manual ou fullName do usuário). */
+  displayName: string;
+  /** E-mail quando usuário cadastrado. */
+  email: string | null;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
  * Funcionalidade = capacidade reutilizável (objeto central).
  * Status NÃO vive aqui — vive na Implementação.
  * Produto = aplicabilidade declarada (productIds); existência concreta = FCC.
@@ -658,6 +678,10 @@ export interface FeatureMapRow {
   researchFileSize?: number | null;
   researchFileUrl?: string | null;
   needsEvolution?: boolean;
+  /** Chaves de filtro de perfil de usuário (user:uuid | manual:nome). */
+  userProfileKeys?: string[];
+  /** Rótulos exibíveis dos perfis associados à Feature. */
+  userProfileLabels?: string[];
 }
 
 export interface MapFilters {
@@ -684,6 +708,8 @@ export interface MapFilters {
   priorities: Priority[];
   responsibles: string[];
   phases: RoadmapPhase[];
+  /** Filtro por perfil de usuário (user:id | manual:nome-normalizado). */
+  userProfileKeys: string[];
 }
 
 export interface DashboardKpis {
@@ -747,6 +773,7 @@ export interface DemoDatabase {
   features: Feature[];
   featureNeeds: FeatureNeed[];
   featureJourneys: FeatureJourney[];
+  featureUserProfiles: FeatureUserProfile[];
   channels: Channel[];
   channelContexts: ChannelContext[];
   /** Implementações (Feature × Product × ChannelContext). */

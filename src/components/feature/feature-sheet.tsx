@@ -15,6 +15,7 @@ import {
   type EvaluationLaunchRequest,
 } from "@/components/feature/channel-intelligence";
 import { FeatureComments } from "@/components/feature/feature-comments";
+import { FeatureUserProfilesPanel } from "@/components/feature/feature-user-profiles-panel";
 import {
   ContextEditModal,
   EvidenceEditModal,
@@ -53,6 +54,7 @@ import type {
   FeatureChannelEvaluation,
   FeatureEvolution,
   FeatureMapRow,
+  FeatureUserProfile,
   Gap,
   Journey,
   UserNeed,
@@ -267,6 +269,7 @@ export function FeatureSheet({
   audienceOptions,
   momentOptions,
   channelOptions,
+  userProfiles = [],
 }: {
   feature: Feature;
   hierarchy: {
@@ -285,7 +288,7 @@ export function FeatureSheet({
     audienceId: string;
     momentId: string;
     channelId: string;
-    temporalStatus: string;
+    temporalStatus: FeatureMapRow["temporalStatus"];
   }[];
   productOptions: Option[];
   journeyOptions: Option[];
@@ -293,6 +296,7 @@ export function FeatureSheet({
   audienceOptions: Option[];
   momentOptions: Option[];
   channelOptions: Option[];
+  userProfiles?: FeatureUserProfile[];
 }) {
   const { canEdit } = useAuth();
   const router = useRouter();
@@ -704,6 +708,12 @@ export function FeatureSheet({
           <Meta label="Público" value={audienceMomentLabel} />
         </dl>
       </section>
+
+      <FeatureUserProfilesPanel
+        featureId={feature.id}
+        initialProfiles={userProfiles}
+        canEdit={canEdit}
+      />
 
       {/* DISPONIBILIDADE POR CANAL */}
       <section className="space-y-4">

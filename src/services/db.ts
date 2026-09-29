@@ -18,6 +18,7 @@ import type {
   FeatureJourneyRow,
   FeatureNeedRow,
   FeatureRow,
+  FeatureUserProfileRow,
   GapRow,
   FeatureEvolutionRow,
   FeatureChannelEvaluationRow,
@@ -103,6 +104,7 @@ async function fetchFromSupabase(): Promise<DemoDatabase> {
     features,
     featureNeeds,
     featureJourneys,
+    featureUserProfiles,
     channels,
     channelContexts,
     featureChannelContexts,
@@ -133,6 +135,12 @@ async function fetchFromSupabase(): Promise<DemoDatabase> {
     supabase.from("features").select("*").eq("active", true).order("name"),
     supabase.from("feature_needs").select("*"),
     supabase.from("feature_journeys").select("*"),
+    supabase
+      .from("feature_user_profiles")
+      .select(
+        "id, feature_id, user_id, profile_name, created_by, created_at, updated_at, profiles(full_name, email)",
+      )
+      .order("created_at", { ascending: true }),
     supabase.from("channels").select("*").eq("active", true).order("name"),
     supabase.from("channel_contexts").select("*").eq("active", true),
     supabase.from("feature_channel_contexts").select("*").eq("active", true),
@@ -166,6 +174,13 @@ async function fetchFromSupabase(): Promise<DemoDatabase> {
       : null,
     featureJourneys.error && !isMissingRelation(featureJourneys.error)
       ? featureJourneys.error
+      : null,
+    featureUserProfiles.error &&
+    !isMissingRelation(featureUserProfiles.error) &&
+    !/Could not find a relationship|relationship between/i.test(
+      featureUserProfiles.error.message ?? "",
+    )
+      ? featureUserProfiles.error
       : null,
     featureEvolutions.error &&
     !isMissingRelation(featureEvolutions.error) &&
@@ -221,6 +236,9 @@ async function fetchFromSupabase(): Promise<DemoDatabase> {
     featureJourneys: (isMissingRelation(featureJourneys.error)
       ? []
       : (featureJourneys.data ?? [])) as FeatureJourneyRow[],
+    featureUserProfiles: (isMissingRelation(featureUserProfiles.error)
+      ? []
+      : (featureUserProfiles.data ?? [])) as FeatureUserProfileRow[],
     channels: (channels.data ?? []) as ChannelRow[],
     channelContexts: (channelContexts.data ?? []) as ChannelContextRow[],
     featureChannelContexts: (featureChannelContexts.data ??

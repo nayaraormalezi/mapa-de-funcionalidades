@@ -641,6 +641,8 @@ export async function ensureJourneyStagesForAudiences(input: {
   displayName: string;
   sortOrder: number;
   audienceIds: string[];
+  /** Etapa canônica (JourneyStage id). */
+  journeyStageId?: string;
 }): Promise<ActionResult> {
   const blocked = await guardMutation();
   if (blocked) return blocked;
@@ -649,6 +651,7 @@ export async function ensureJourneyStagesForAudiences(input: {
   const momentId = String(input.momentId ?? "").trim();
   const displayName = String(input.displayName ?? "").trim();
   const sortOrder = Number(input.sortOrder ?? 0);
+  const journeyStageId = String(input.journeyStageId ?? "").trim() || null;
   const audienceIds = Array.from(
     new Set(
       (input.audienceIds ?? []).map((id) => String(id).trim()).filter(Boolean),
@@ -664,13 +667,19 @@ export async function ensureJourneyStagesForAudiences(input: {
 
   const supabase = await createClient();
 
-  const { data: existing, error: existingError } = await supabase
+  let query = supabase
     .from("journey_audience_stages")
     .select("id, audience_id")
     .eq("journey_id", journeyId)
     .eq("moment_id", momentId)
     .eq("active", true)
     .in("audience_id", audienceIds);
+
+  if (journeyStageId) {
+    query = query.eq("journey_stage_id", journeyStageId);
+  }
+
+  const { data: existing, error: existingError } = await query;
 
   if (existingError) {
     return { ok: false, message: existingError.message };
@@ -687,6 +696,7 @@ export async function ensureJourneyStagesForAudiences(input: {
     id: newId("jas"),
     audience_id: audienceId,
     journey_id: journeyId,
+    ...(journeyStageId ? { journey_stage_id: journeyStageId } : {}),
     display_name: displayName,
     sort_order: sortOrder,
     moment_id: momentId,

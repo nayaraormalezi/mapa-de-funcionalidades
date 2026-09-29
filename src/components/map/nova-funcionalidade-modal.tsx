@@ -1,23 +1,36 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { Check, Lightbulb, Loader2, UserRound, X } from "lucide-react";
+import { Check, Lightbulb, Loader2, Plus, UserRound, X } from "lucide-react";
 import {
   createFeatureFromModal,
   ensureJourneyStagesForAudiences,
   extendNeedAudiences,
   linkExistingFeatureToJourney,
 } from "@/app/actions/crud";
+import {
+  addFeatureUserProfile,
+  searchFeatureProfileUsers,
+  type ProfileSearchHit,
+} from "@/app/actions/feature-user-profiles";
 import { useAuth } from "@/components/auth/auth-provider";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { appliesToAudience } from "@/lib/audiences";
+import {
+  FEATURE_USER_PROFILE_NAME_MAX,
+  validateFeatureUserProfileInput,
+} from "@/lib/feature-user-profiles";
 import { PRODUCT_OPTIONS } from "@/lib/products";
 import { cn } from "@/lib/utils";
 import type { Priority } from "@/types";
 
 type Option = { value: string; label: string };
 type JourneyOption = Option & { momentIds: string[] };
-type NeedOption = Option & { journeyId: string; audienceIds?: string[] };
+type NeedOption = Option & {
+  journeyId: string;
+  journeyStageId?: string | null;
+  audienceIds?: string[];
+};
 type FeatureOption = Option & { description?: string };
 type ChannelContextOption = {
   audienceId: string;
@@ -26,12 +39,35 @@ type ChannelContextOption = {
 };
 type JourneyStageOption = {
   audienceId: string;
+  /** Jornada canônica (ex.: jrn-consorcio). */
   journeyId: string;
+  /** Etapa (JourneyStage id). */
   journeyStageId?: string;
   momentId: string;
   displayName: string;
   sortOrder: number;
 };
+
+type StageSelectOption = {
+  value: string;
+  label: string;
+  catalogJourneyId: string;
+  momentId: string;
+  sortOrder: number;
+};
+type DraftUserProfile =
+  | {
+      key: string;
+      kind: "REGISTERED_USER";
+      userId: string;
+      displayName: string;
+      email: string;
+    }
+  | {
+      key: string;
+      kind: "MANUAL_PROFILE";
+      profileName: string;
+    };
 
 const STEPS = [
   { id: 1, label: "Contexto" },
@@ -152,7 +188,10 @@ export function NovaFuncionalidadeModal({
   initial?: {
     audienceIds?: string[];
     momentId?: string;
+    /** @deprecated Prefer journeyStageId — mantido como jornada canônica. */
     journeyId?: string;
+    /** Etapa da jornada (JourneyStage id). */
+    journeyStageId?: string;
     needId?: string;
     priority?: Priority;
     lockNeed?: boolean;
@@ -163,7 +202,8 @@ export function NovaFuncionalidadeModal({
   const [step, setStep] = useState(1);
   const [audienceIds, setAudienceIds] = useState<string[]>([]);
   const [momentId, setMomentId] = useState("");
-  const [journeyId, setJourneyId] = useState("");
+  /** Etapa selecionada (JourneyStage id). */
+  const [journeyStageId, setJourneyStageId] = useState("");
   const [needId, setNeedId] = useState("");
   const [priority, setPriority] = useState<Priority | "">("MEDIUM");
   const [featureName, setFeatureName] = useState("");
@@ -193,6 +233,19 @@ export function NovaFuncionalidadeModal({
   const [needAudienceOverrides, setNeedAudienceOverrides] = useState<
     Record<string, string[]>
   >({});
+  const [draftProfiles, setDraftProfiles] = useState<DraftUserProfile[]>([]);
+  const [profileDraftOpen, setProfileDraftOpen] = useState(false);
+  const [profileKind, setProfileKind] = useState<
+    "REGISTERED_USER" | "MANUAL_PROFILE"
+  >("REGISTERED_USER");
+  const [profileQuery, setProfileQuery] = useState("");
+  const [profileHits, setProfileHits] = useState<ProfileSearchHit[]>([]);
+  const [profileSelected, setProfileSelected] =
+    useState<ProfileSearchHit | null>(null);
+  const [profileManualName, setProfileManualName] = useState("");
+  const [profileDraftError, setProfileDraftError] = useState<string | null>(
+    null,
+  );
   const needLocked = Boolean(initial?.lockNeed && initial?.needId);
 
   useEffect(() => {
@@ -200,7 +253,14 @@ export function NovaFuncionalidadeModal({
     setStep(1);
     setAudienceIds(initial?.audienceIds ?? []);
     setMomentId(initial?.momentId ?? "");
-    setJourneyId(initial?.journeyId ?? "");
+    const lockedNeed = initial?.needId
+      ? needs.find((n) => n.value === initial.needId)
+      : undefined;
+    setJourneyStageId(
+      initial?.journeyStageId ??
+        lockedNeed?.journeyStageId ??
+        "",
+    );
     setNeedId(initial?.needId ?? "");
     setPriority(initial?.priority ?? "MEDIUM");
     setFeatureName("");
@@ -214,34 +274,54 @@ export function NovaFuncionalidadeModal({
     setPendingNeedExtend(null);
     setPendingMissingStages(null);
     setNeedAudienceOverrides({});
+    setDraftProfiles([]);
+    setProfileDraftOpen(false);
+    setProfileKind("REGISTERED_USER");
+    setProfileQuery("");
+    setProfileHits([]);
+    setProfileSelected(null);
+    setProfileManualName("");
+    setProfileDraftError(null);
   }, [open, initial]);
 
-  const journeysForMoment = useMemo(() => {
+  const stagesForMoment = useMemo((): StageSelectOption[] => {
     if (!momentId) return [];
-    const fromCatalog = journeys.filter((j) => j.momentIds.includes(momentId));
-    if (fromCatalog.length > 0) return fromCatalog;
-
-    // Fallback: deriva jornadas ativas a partir das etapas (JAS) do momento.
-    const byId = new Map<string, JourneyOption>();
+    const byStage = new Map<string, StageSelectOption>();
     for (const stage of journeyAudienceStages) {
-      if (stage.momentId !== momentId || !stage.journeyId) continue;
-      if (byId.has(stage.journeyId)) continue;
-      const catalog = journeys.find((j) => j.value === stage.journeyId);
-      byId.set(stage.journeyId, {
-        value: stage.journeyId,
-        label: catalog?.label ?? stage.displayName,
-        momentIds: catalog?.momentIds?.length
-          ? catalog.momentIds
-          : [momentId],
+      if (stage.momentId !== momentId) continue;
+      const stageId = stage.journeyStageId?.trim();
+      if (!stageId) continue;
+      if (byStage.has(stageId)) continue;
+      byStage.set(stageId, {
+        value: stageId,
+        label: stage.displayName,
+        catalogJourneyId: stage.journeyId,
+        momentId: stage.momentId,
+        sortOrder: stage.sortOrder,
       });
     }
-    return Array.from(byId.values());
-  }, [journeys, journeyAudienceStages, momentId]);
+    return Array.from(byStage.values()).sort(
+      (a, b) =>
+        a.sortOrder - b.sortOrder || a.label.localeCompare(b.label, "pt-BR"),
+    );
+  }, [journeyAudienceStages, momentId]);
 
-  const needsForJourney = useMemo(() => {
-    if (!journeyId) return [];
-    return needs.filter((n) => n.journeyId === journeyId);
-  }, [needs, journeyId]);
+  const selectedStage = useMemo(
+    () => stagesForMoment.find((s) => s.value === journeyStageId) ?? null,
+    [stagesForMoment, journeyStageId],
+  );
+
+  /** Jornada canônica resolvida a partir da etapa (para APIs). */
+  const catalogJourneyId =
+    selectedStage?.catalogJourneyId ??
+    journeys.find((j) => j.momentIds.includes(momentId))?.value ??
+    journeys[0]?.value ??
+    "";
+
+  const needsForStage = useMemo(() => {
+    if (!journeyStageId) return [];
+    return needs.filter((n) => n.journeyStageId === journeyStageId);
+  }, [needs, journeyStageId]);
 
   const selectedNeed = useMemo(
     () => needs.find((n) => n.value === needId),
@@ -263,32 +343,38 @@ export function NovaFuncionalidadeModal({
   }, [audienceIds, needId, selectedNeedAudienceIds]);
 
   const missingStageAudienceIds = useMemo(() => {
-    if (!journeyId || !momentId || audienceIds.length === 0) return [];
+    if (!journeyStageId || !momentId || audienceIds.length === 0) return [];
     return audienceIds.filter(
       (aid) =>
         !journeyAudienceStages.some(
           (s) =>
             s.audienceId === aid &&
-            s.journeyId === journeyId &&
+            s.journeyStageId === journeyStageId &&
             s.momentId === momentId,
         ),
     );
-  }, [audienceIds, journeyId, momentId, journeyAudienceStages]);
+  }, [audienceIds, journeyStageId, momentId, journeyAudienceStages]);
 
   const stageTemplate = useMemo(() => {
-    if (!journeyId || !momentId) return null;
+    if (!journeyStageId || !momentId || !catalogJourneyId) return null;
     const existing = journeyAudienceStages.find(
-      (s) => s.journeyId === journeyId && s.momentId === momentId,
+      (s) => s.journeyStageId === journeyStageId && s.momentId === momentId,
     );
-    const catalogName =
-      journeys.find((j) => j.value === journeyId)?.label ?? journeyId;
     return {
-      journeyId,
+      journeyId: catalogJourneyId,
+      journeyStageId,
       momentId,
-      displayName: existing?.displayName ?? catalogName,
-      sortOrder: existing?.sortOrder ?? 0,
+      displayName:
+        existing?.displayName ?? selectedStage?.label ?? journeyStageId,
+      sortOrder: existing?.sortOrder ?? selectedStage?.sortOrder ?? 0,
     };
-  }, [journeyId, momentId, journeyAudienceStages, journeys]);
+  }, [
+    journeyStageId,
+    momentId,
+    catalogJourneyId,
+    journeyAudienceStages,
+    selectedStage,
+  ]);
 
   const channelsGrouped = useMemo(() => {
     return audienceIds.map((audienceId) => {
@@ -350,19 +436,19 @@ export function NovaFuncionalidadeModal({
     nameFocused && featureSuggestions.length > 0 && step === 2;
 
   useEffect(() => {
-    if (!open || !journeyId) return;
-    if (!journeysForMoment.some((j) => j.value === journeyId)) {
-      setJourneyId("");
+    if (!open || !journeyStageId) return;
+    if (!stagesForMoment.some((s) => s.value === journeyStageId)) {
+      setJourneyStageId("");
       if (!needLocked) setNeedId("");
     }
-  }, [journeysForMoment, journeyId, open, needLocked]);
+  }, [stagesForMoment, journeyStageId, open, needLocked]);
 
   useEffect(() => {
     if (!open || needLocked) return;
-    if (needId && !needsForJourney.some((n) => n.value === needId)) {
+    if (needId && !needsForStage.some((n) => n.value === needId)) {
       setNeedId("");
     }
-  }, [needsForJourney, needId, open, needLocked]);
+  }, [needsForStage, needId, open, needLocked]);
 
   // Remove seleções de canais de públicos desmarcados ou canais que saíram do contexto.
   useEffect(() => {
@@ -400,7 +486,7 @@ export function NovaFuncionalidadeModal({
       return Boolean(
         audienceIds.length > 0 &&
           momentId &&
-          journeyId &&
+          journeyStageId &&
           needId &&
           priority,
       );
@@ -415,7 +501,7 @@ export function NovaFuncionalidadeModal({
     step,
     audienceIds,
     momentId,
-    journeyId,
+    journeyStageId,
     needId,
     priority,
     featureName,
@@ -434,8 +520,7 @@ export function NovaFuncionalidadeModal({
           .map((id) => audiences.find((a) => a.value === id)?.label ?? id)
           .join(", ");
   const momentLabel = moments.find((m) => m.value === momentId)?.label ?? "—";
-  const journeyLabel =
-    journeys.find((j) => j.value === journeyId)?.label ?? "—";
+  const stageLabel = selectedStage?.label ?? "—";
   const needLabel = needs.find((n) => n.value === needId)?.label ?? "—";
   const priorityLabel =
     PRIORITY_OPTIONS.find((p) => p.value === priority)?.label ?? "—";
@@ -474,7 +559,7 @@ export function NovaFuncionalidadeModal({
     setStep(1);
     setAudienceIds([]);
     setMomentId("");
-    setJourneyId("");
+    setJourneyStageId("");
     setNeedId("");
     setPriority("MEDIUM");
     setFeatureName("");
@@ -488,6 +573,14 @@ export function NovaFuncionalidadeModal({
     setPendingNeedExtend(null);
     setPendingMissingStages(null);
     setNeedAudienceOverrides({});
+    setDraftProfiles([]);
+    setProfileDraftOpen(false);
+    setProfileKind("REGISTERED_USER");
+    setProfileQuery("");
+    setProfileHits([]);
+    setProfileSelected(null);
+    setProfileManualName("");
+    setProfileDraftError(null);
     onClose();
   }
 
@@ -526,7 +619,7 @@ export function NovaFuncionalidadeModal({
       const result = await linkExistingFeatureToJourney({
         featureId: pendingExisting.value,
         needId,
-        journeyId,
+        journeyId: catalogJourneyId,
       });
       if (!result.ok) {
         setSubmitError(result.message);
@@ -569,6 +662,7 @@ export function NovaFuncionalidadeModal({
       if (stageMissing.length > 0 && stageTemplate) {
         const stageResult = await ensureJourneyStagesForAudiences({
           journeyId: stageTemplate.journeyId,
+          journeyStageId: stageTemplate.journeyStageId,
           momentId: stageTemplate.momentId,
           displayName: stageTemplate.displayName,
           sortOrder: stageTemplate.sortOrder,
@@ -612,7 +706,7 @@ export function NovaFuncionalidadeModal({
       const result = await createFeatureFromModal({
         audienceIds,
         momentId,
-        journeyId,
+        journeyId: catalogJourneyId,
         needId,
         priority: priority || "MEDIUM",
         featureName,
@@ -624,9 +718,124 @@ export function NovaFuncionalidadeModal({
         setSubmitError(result.message);
         return;
       }
+      if (result.id && draftProfiles.length > 0) {
+        for (const draft of draftProfiles) {
+          if (draft.kind === "REGISTERED_USER") {
+            await addFeatureUserProfile({
+              featureId: result.id,
+              kind: "REGISTERED_USER",
+              userId: draft.userId,
+            });
+          } else {
+            await addFeatureUserProfile({
+              featureId: result.id,
+              kind: "MANUAL_PROFILE",
+              profileName: draft.profileName,
+            });
+          }
+        }
+      }
       if (result.id) onCreated?.(result.id);
       resetAndClose();
     });
+  }
+
+  useEffect(() => {
+    if (!profileDraftOpen || profileKind !== "REGISTERED_USER") return;
+    if (profileSelected && profileQuery === profileSelected.fullName) return;
+    const q = profileQuery.trim();
+    if (q.length < 1) {
+      setProfileHits([]);
+      return;
+    }
+    const handle = window.setTimeout(async () => {
+      const result = await searchFeatureProfileUsers(q);
+      if ("users" in result && result.ok) {
+        const taken = new Set(
+          draftProfiles
+            .filter((p) => p.kind === "REGISTERED_USER")
+            .map((p) => p.userId),
+        );
+        setProfileHits(result.users.filter((u) => !taken.has(u.id)));
+      }
+    }, 220);
+    return () => window.clearTimeout(handle);
+  }, [
+    profileDraftOpen,
+    profileKind,
+    profileQuery,
+    profileSelected,
+    draftProfiles,
+  ]);
+
+  function addDraftProfile() {
+    setProfileDraftError(null);
+    if (profileKind === "REGISTERED_USER") {
+      if (!profileSelected) {
+        setProfileDraftError("Selecione um usuário cadastrado.");
+        return;
+      }
+      const validated = validateFeatureUserProfileInput({
+        kind: "REGISTERED_USER",
+        userId: profileSelected.id,
+      });
+      if (!validated.ok) {
+        setProfileDraftError(validated.message);
+        return;
+      }
+      if (
+        draftProfiles.some(
+          (p) => p.kind === "REGISTERED_USER" && p.userId === profileSelected.id,
+        )
+      ) {
+        setProfileDraftError("Este usuário já foi adicionado.");
+        return;
+      }
+      setDraftProfiles((prev) => [
+        ...prev,
+        {
+          key: `user:${profileSelected.id}`,
+          kind: "REGISTERED_USER",
+          userId: profileSelected.id,
+          displayName: profileSelected.fullName,
+          email: profileSelected.email,
+        },
+      ]);
+    } else {
+      const validated = validateFeatureUserProfileInput({
+        kind: "MANUAL_PROFILE",
+        profileName: profileManualName,
+      });
+      if (!validated.ok) {
+        setProfileDraftError(validated.message);
+        return;
+      }
+      const key = validated.profileName!.trim().toLowerCase().replace(/\s+/g, " ");
+      if (
+        draftProfiles.some(
+          (p) =>
+            p.kind === "MANUAL_PROFILE" &&
+            p.profileName.trim().toLowerCase().replace(/\s+/g, " ") === key,
+        )
+      ) {
+        setProfileDraftError("Este perfil manual já foi adicionado.");
+        return;
+      }
+      setDraftProfiles((prev) => [
+        ...prev,
+        {
+          key: `manual:${key}`,
+          kind: "MANUAL_PROFILE",
+          profileName: validated.profileName!,
+        },
+      ]);
+    }
+    setProfileDraftOpen(false);
+    setProfileQuery("");
+    setProfileHits([]);
+    setProfileSelected(null);
+    setProfileManualName("");
+    setProfileDraftError(null);
   }
 
   return (
@@ -744,25 +953,25 @@ export function NovaFuncionalidadeModal({
                     value={momentId}
                     onChange={(value) => {
                       setMomentId(value);
-                      setJourneyId("");
+                      setJourneyStageId("");
                       if (!needLocked) setNeedId("");
                     }}
                   />
                 </Field>
 
                 <Field
-                  label="Jornada"
+                  label="Etapa da jornada"
                   required
                   hint={
                     momentId
-                      ? "Somente jornadas do momento selecionado."
-                      : "Selecione o momento para listar as jornadas disponíveis."
+                      ? "Somente etapas do momento selecionado."
+                      : "Selecione o momento para listar as etapas disponíveis."
                   }
                 >
                   <select
-                    value={journeyId}
+                    value={journeyStageId}
                     onChange={(e) => {
-                      setJourneyId(e.target.value);
+                      setJourneyStageId(e.target.value);
                       if (!needLocked) setNeedId("");
                     }}
                     disabled={!momentId}
@@ -773,15 +982,15 @@ export function NovaFuncionalidadeModal({
                         ? "Selecionar..."
                         : "Selecione o momento primeiro"}
                     </option>
-                    {journeysForMoment.map((j) => (
-                      <option key={j.value} value={j.value}>
-                        {j.label}
+                    {stagesForMoment.map((s) => (
+                      <option key={s.value} value={s.value}>
+                        {s.label}
                       </option>
                     ))}
                   </select>
-                  {momentId && journeysForMoment.length === 0 ? (
+                  {momentId && stagesForMoment.length === 0 ? (
                     <p className="mt-1.5 text-xs text-amber-700">
-                      Nenhuma jornada vinculada a este momento.
+                      Nenhuma etapa vinculada a este momento.
                     </p>
                   ) : null}
                 </Field>
@@ -792,25 +1001,25 @@ export function NovaFuncionalidadeModal({
                   hint={
                     needLocked
                       ? "Definida pela necessidade de origem — não pode ser alterada."
-                      : journeyId
-                        ? "Somente necessidades já cadastradas nesta jornada."
-                        : "Selecione a jornada para listar as necessidades."
+                      : journeyStageId
+                        ? "Somente necessidades já cadastradas nesta etapa."
+                        : "Selecione a etapa da jornada para listar as necessidades."
                   }
                 >
                   <select
                     value={needId}
                     onChange={(e) => setNeedId(e.target.value)}
-                    disabled={!journeyId || needLocked}
+                    disabled={!journeyStageId || needLocked}
                     className="h-10 w-full rounded-lg border border-[var(--border)] bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-[var(--brand-ring)] disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500"
                   >
                     <option value="">
-                      {journeyId
+                      {journeyStageId
                         ? "Selecionar..."
-                        : "Selecione a jornada primeiro"}
+                        : "Selecione a etapa da jornada primeiro"}
                     </option>
                     {(needLocked
                       ? needs.filter((n) => n.value === needId)
-                      : needsForJourney
+                      : needsForStage
                     ).map((n) => (
                       <option key={n.value} value={n.value}>
                         {n.label}
@@ -818,10 +1027,10 @@ export function NovaFuncionalidadeModal({
                     ))}
                   </select>
                   {!needLocked &&
-                  journeyId &&
-                  needsForJourney.length === 0 ? (
+                  journeyStageId &&
+                  needsForStage.length === 0 ? (
                     <p className="mt-1.5 text-xs text-amber-700">
-                      Nenhuma necessidade cadastrada nesta jornada.
+                      Nenhuma necessidade cadastrada nesta etapa.
                     </p>
                   ) : null}
                   {missingAudienceIds.length > 0 && needId ? (
@@ -838,7 +1047,7 @@ export function NovaFuncionalidadeModal({
                   ) : null}
                   {missingStageAudienceIds.length > 0 ? (
                     <p className="mt-1.5 text-xs text-amber-700">
-                      A etapa &quot;{journeyLabel}&quot; ainda não existe para:{" "}
+                      A etapa &quot;{stageLabel}&quot; ainda não existe para:{" "}
                       {missingStageAudienceIds
                         .map(
                           (id) =>
@@ -931,6 +1140,179 @@ export function NovaFuncionalidadeModal({
                     className="w-full rounded-lg border border-[var(--border)] bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--brand-ring)]"
                   />
                 </Field>
+
+                <div className="space-y-2 rounded-xl border border-[var(--border)] px-3 py-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-medium text-slate-900">
+                        Perfil de usuário
+                      </p>
+                      <p className="text-xs text-[var(--muted-foreground)]">
+                        Indique para quem esta funcionalidade é destinada ou quem
+                        participa desta experiência.
+                      </p>
+                    </div>
+                    {!profileDraftOpen ? (
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                        onClick={() => setProfileDraftOpen(true)}
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        Adicionar perfil
+                      </button>
+                    ) : null}
+                  </div>
+
+                  {draftProfiles.length === 0 && !profileDraftOpen ? (
+                    <p className="text-xs text-[var(--muted-foreground)]">
+                      Nenhum perfil de usuário associado.
+                    </p>
+                  ) : (
+                    <ul className="space-y-1.5">
+                      {draftProfiles.map((p) => (
+                        <li
+                          key={p.key}
+                          className="flex items-center justify-between gap-2 rounded-lg border border-[var(--border)] bg-white px-2.5 py-2"
+                        >
+                          <div className="flex min-w-0 items-center gap-2">
+                            <UserRound
+                              className="h-4 w-4 shrink-0 text-slate-400"
+                              aria-hidden
+                            />
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium text-slate-900">
+                                {p.kind === "REGISTERED_USER"
+                                  ? p.displayName
+                                  : p.profileName}
+                              </p>
+                              <p className="text-[11px] text-slate-500">
+                                {p.kind === "REGISTERED_USER"
+                                  ? `${p.email} · Usuário cadastrado`
+                                  : "Perfil manual"}
+                              </p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                            aria-label="Remover perfil"
+                            onClick={() =>
+                              setDraftProfiles((prev) =>
+                                prev.filter((x) => x.key !== p.key),
+                              )
+                            }
+                          >
+                            <X className="h-3.5 w-3.5" aria-hidden />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
+                  {profileDraftOpen ? (
+                    <div className="space-y-3 rounded-lg border border-[var(--border)] bg-slate-50 p-3">
+                      <div className="flex flex-wrap gap-3 text-sm">
+                        <label className="inline-flex items-center gap-2">
+                          <input
+                            type="radio"
+                            checked={profileKind === "REGISTERED_USER"}
+                            onChange={() => {
+                              setProfileKind("REGISTERED_USER");
+                              setProfileDraftError(null);
+                            }}
+                          />
+                          Usuário cadastrado
+                        </label>
+                        <label className="inline-flex items-center gap-2">
+                          <input
+                            type="radio"
+                            checked={profileKind === "MANUAL_PROFILE"}
+                            onChange={() => {
+                              setProfileKind("MANUAL_PROFILE");
+                              setProfileDraftError(null);
+                            }}
+                          />
+                          Perfil manual
+                        </label>
+                      </div>
+                      {profileKind === "REGISTERED_USER" ? (
+                        <div className="relative">
+                          <input
+                            value={profileQuery}
+                            onChange={(e) => {
+                              setProfileQuery(e.target.value);
+                              setProfileSelected(null);
+                              setProfileDraftError(null);
+                            }}
+                            placeholder="Buscar usuário..."
+                            className="h-10 w-full rounded-lg border border-[var(--border)] bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-[var(--brand-ring)]"
+                          />
+                          {profileHits.length > 0 && !profileSelected ? (
+                            <ul className="absolute z-20 mt-1 max-h-40 w-full overflow-auto rounded-lg border border-[var(--border)] bg-white shadow-md">
+                              {profileHits.map((hit) => (
+                                <li key={hit.id}>
+                                  <button
+                                    type="button"
+                                    className="flex w-full flex-col px-3 py-2 text-left hover:bg-slate-50"
+                                    onClick={() => {
+                                      setProfileSelected(hit);
+                                      setProfileQuery(hit.fullName);
+                                      setProfileHits([]);
+                                    }}
+                                  >
+                                    <span className="text-sm font-medium">
+                                      {hit.fullName}
+                                    </span>
+                                    <span className="text-xs text-slate-500">
+                                      {hit.email}
+                                    </span>
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <input
+                          value={profileManualName}
+                          onChange={(e) => {
+                            setProfileManualName(e.target.value);
+                            setProfileDraftError(null);
+                          }}
+                          placeholder="Ex.: Cliente contemplado"
+                          maxLength={FEATURE_USER_PROFILE_NAME_MAX}
+                          className="h-10 w-full rounded-lg border border-[var(--border)] bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-[var(--brand-ring)]"
+                        />
+                      )}
+                      {profileDraftError ? (
+                        <p role="alert" className="text-xs text-rose-600">
+                          {profileDraftError}
+                        </p>
+                      ) : null}
+                      <div className="flex justify-end gap-2">
+                        <button
+                          type="button"
+                          className="rounded-lg px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
+                          onClick={() => {
+                            setProfileDraftOpen(false);
+                            setProfileDraftError(null);
+                          }}
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded-lg bg-[var(--brand)] px-3 py-1.5 text-sm font-medium text-white"
+                          onClick={addDraftProfile}
+                        >
+                          Adicionar
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+
                 {submitError && pendingExisting === null ? (
                   <p
                     role="alert"
@@ -1072,7 +1454,7 @@ export function NovaFuncionalidadeModal({
               <div className="space-y-3 rounded-xl border border-[var(--border)] bg-slate-50 p-4 text-sm">
                 <Row label="Público" value={audienceLabel} />
                 <Row label="Momento" value={momentLabel} />
-                <Row label="Jornada" value={journeyLabel} />
+                <Row label="Etapa da jornada" value={stageLabel} />
                 <Row label="Necessidade" value={needLabel} />
                 <Row label="Prioridade" value={priorityLabel} />
                 <Row label="Funcionalidade" value={featureName || "—"} />
@@ -1180,7 +1562,7 @@ export function NovaFuncionalidadeModal({
         title="Adicionar funcionalidade existente?"
         description={
           pendingExisting
-            ? `A funcionalidade "${pendingExisting.label}" já existe. Deseja adicioná-la à etapa "${journeyLabel}" nesta jornada (necessidade "${needLabel}")?`
+            ? `A funcionalidade "${pendingExisting.label}" já existe. Deseja adicioná-la à etapa "${stageLabel}" (necessidade "${needLabel}")?`
             : ""
         }
         confirmLabel={pending ? "Adicionando…" : "Sim, adicionar"}
@@ -1210,7 +1592,7 @@ export function NovaFuncionalidadeModal({
           }
           if (pendingMissingStages?.length) {
             parts.push(
-              `A etapa "${journeyLabel}" ainda não existe para: ${missingStageLabels}.`,
+              `A etapa "${stageLabel}" ainda não existe para: ${missingStageLabels}.`,
             );
           }
           if (parts.length === 0) return "";

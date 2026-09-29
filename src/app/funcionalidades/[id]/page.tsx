@@ -80,6 +80,10 @@ export default async function FeatureDetailPage({
     label: c.name,
   }));
 
+  const userProfiles = (db.featureUserProfiles ?? []).filter(
+    (p) => p.featureId === id,
+  );
+
   return (
     <div className="space-y-6">
       <BackButton href="/mapa" />
@@ -103,6 +107,7 @@ export default async function FeatureDetailPage({
         audienceOptions={audienceOptions}
         momentOptions={momentOptions}
         channelOptions={channelOptions}
+        userProfiles={userProfiles}
       />
     </div>
   );

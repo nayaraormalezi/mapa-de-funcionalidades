@@ -127,6 +127,18 @@ export type FeatureJourneyRow = {
   journey_id: string;
 };
 
+export type FeatureUserProfileRow = {
+  id: string;
+  feature_id: string;
+  user_id: string | null;
+  profile_name: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  /** Join opcional profiles (user_id). */
+  profiles?: { full_name?: string | null; email?: string | null } | null;
+};
+
 export type ChannelRow = {
   id: string;
   name: string;
@@ -323,6 +335,7 @@ export function mapDatabase(rows: {
   features: FeatureRow[];
   featureNeeds?: FeatureNeedRow[];
   featureJourneys?: FeatureJourneyRow[];
+  featureUserProfiles?: FeatureUserProfileRow[];
   channels: ChannelRow[];
   channelContexts: ChannelContextRow[];
   featureChannelContexts: FeatureChannelContextRow[];
@@ -520,6 +533,28 @@ export function mapDatabase(rows: {
       featureId: l.feature_id,
       journeyId: l.journey_id,
     })),
+    featureUserProfiles: (rows.featureUserProfiles ?? []).map((row) => {
+      const isRegistered = Boolean(row.user_id);
+      const fullName = row.profiles?.full_name?.trim() || null;
+      const email = row.profiles?.email?.trim() || null;
+      const manualName = row.profile_name?.trim() || null;
+      return {
+        id: row.id,
+        featureId: row.feature_id,
+        kind: isRegistered
+          ? ("REGISTERED_USER" as const)
+          : ("MANUAL_PROFILE" as const),
+        userId: row.user_id,
+        profileName: isRegistered ? null : manualName,
+        displayName: isRegistered
+          ? fullName || email || "Usuário"
+          : manualName || "Perfil",
+        email: isRegistered ? email : null,
+        createdBy: row.created_by,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      };
+    }),
     channels: rows.channels.map((c) => ({
       id: c.id,
       name: c.name,

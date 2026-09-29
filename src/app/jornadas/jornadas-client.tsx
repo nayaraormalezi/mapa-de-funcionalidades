@@ -300,6 +300,7 @@ export function JornadasClient({
     audienceIds?: string[];
     momentId?: string;
     journeyId?: string;
+    journeyStageId?: string;
     needId?: string;
     priority?: Priority;
     lockNeed?: boolean;
@@ -603,6 +604,7 @@ export function JornadasClient({
           value: n.id,
           label: n.name,
           journeyId: n.journeyId,
+          journeyStageId: n.journeyStageId,
           audienceIds: n.audienceIds,
         }))}
         channels={channels}
@@ -673,6 +675,7 @@ export function JornadasClient({
           startEnsureStages(async () => {
             const result = await ensureJourneyStagesForAudiences({
               journeyId: journey.catalogJourneyId ?? "jrn-consorcio",
+              journeyStageId: journey.id,
               momentId: journey.momentId,
               displayName: journey.name,
               sortOrder: journey.order,
@@ -1230,7 +1233,10 @@ export function JornadasClient({
                                       ? [audienceId]
                                       : [],
                                     momentId: journey?.momentId,
-                                    journeyId: journey?.catalogJourneyId ?? "jrn-consorcio",
+                                    journeyId:
+                                      journey?.catalogJourneyId ??
+                                      "jrn-consorcio",
+                                    journeyStageId: journey?.id,
                                     needId: need.id,
                                     priority: need.priority,
                                     lockNeed: true,
@@ -1269,7 +1275,9 @@ export function JornadasClient({
                       setAddFeatureInitial({
                         audienceIds: audienceId ? [audienceId] : [],
                         momentId: journey?.momentId,
-                        journeyId: journey?.catalogJourneyId ?? "jrn-consorcio",
+                        journeyId:
+                          journey?.catalogJourneyId ?? "jrn-consorcio",
+                        journeyStageId: journey?.id,
                         lockNeed: false,
                       });
                       setAddFeatureOpen(true);
