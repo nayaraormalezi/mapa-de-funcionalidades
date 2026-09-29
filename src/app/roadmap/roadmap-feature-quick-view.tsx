@@ -8,7 +8,10 @@ import {
   useTransition,
 } from "react";
 import { useRouter } from "next/navigation";
-import { upsertFeatureEvolution } from "@/app/actions/crud";
+import {
+  upsertFeatureChannelContext,
+  upsertFeatureEvolution,
+} from "@/app/actions/crud";
 import {
   activeEvolutions,
   doneEvolutions,
@@ -18,6 +21,7 @@ import {
 } from "@/app/roadmap/roadmap-types";
 import { PriorityBadge } from "@/components/badges/priority-badge";
 import { FeatureComments } from "@/components/feature/feature-comments";
+import { WorkResponsiblesPanel } from "@/components/feature/work-responsibles-panel";
 import { ActionMenu } from "@/components/ui/action-menu";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,6 +29,7 @@ import {
   evolutionPhaseOptions,
   evolutionStatusLabel,
   featureStageLabel,
+  featureStatusOptions,
   priorityLabel,
 } from "@/lib/labels";
 import { cn } from "@/lib/utils";
@@ -37,6 +42,11 @@ import {
 
 const FOCUSABLE =
   'a[href],button:not([disabled]),textarea,input,select,[tabindex]:not([tabindex="-1"])';
+
+function toInputDate(value: string | null) {
+  if (!value) return "";
+  return value.slice(0, 10);
+}
 
 export function RoadmapFeatureQuickView({
   featureId,
@@ -62,6 +72,7 @@ export function RoadmapFeatureQuickView({
   const previouslyFocused = useRef<HTMLElement | null>(null);
   const [addingFor, setAddingFor] = useState(false);
   const [showOtherContexts, setShowOtherContexts] = useState(false);
+  const [savingDelivery, startSaveDelivery] = useTransition();
 
   /** Contexto que originou o clique — nunca o primeiro da lista por acaso. */
   const primary =
@@ -133,6 +144,27 @@ export function RoadmapFeatureQuickView({
   function openFullSheet() {
     onClose();
     router.push(`/funcionalidades/${featureId}`);
+  }
+
+  function saveDelivery(formData: FormData) {
+    if (!primary || !canEdit) return;
+    formData.set("id", primary.id);
+    formData.set("feature_id", primary.featureId);
+    formData.set("channel_context_id", primary.channelContextId);
+    formData.set("product_id", primary.productId);
+    formData.set("experience", primary.experience);
+    formData.set("status", primary.status);
+    if (primary.launchDate) {
+      formData.set("launch_date", primary.launchDate.slice(0, 10));
+    }
+    startSaveDelivery(async () => {
+      const result = await upsertFeatureChannelContext(formData);
+      if (!result.ok) {
+        alert(result.message);
+        return;
+      }
+      router.refresh();
+    });
   }
 
   return (
@@ -212,7 +244,7 @@ export function RoadmapFeatureQuickView({
               <h3 className="text-[11px] font-semibold tracking-[0.08em] text-slate-500 uppercase">
                 Esta entrega
               </h3>
-              {statusPhase ? (
+              {!canEdit && statusPhase ? (
                 <p className="mt-2 inline-flex items-center gap-1.5 text-base font-semibold text-slate-900">
                   <span className="text-slate-400" aria-hidden>
                     ●
@@ -248,15 +280,108 @@ export function RoadmapFeatureQuickView({
                   }
                   className="sm:col-span-2"
                 />
-                <Meta
-                  label="Responsável"
-                  value={
-                    primary.responsible?.trim() ? primary.responsible : "—"
-                  }
-                  hint="Quem executa ou acompanha esta entrega"
-                  className="sm:col-span-2"
-                />
               </dl>
+
+              {canEdit ? (
+                <form
+                  key={primary.id}
+                  action={saveDelivery}
+                  className="mt-4 space-y-3 border-t border-slate-200/80 pt-4"
+                >
+                  <p className="text-[11px] font-semibold tracking-[0.06em] text-slate-500 uppercase">
+                    Editar entrega
+                  </p>
+                  <label className="block space-y-1 text-xs font-medium text-slate-600">
+                    Status da implementação
+                    <select
+                      name="phase"
+                      defaultValue={primary.phase}
+                      className="h-9 w-full rounded-lg border border-[var(--border)] bg-white px-2 text-sm"
+                    >
+                      {featureStatusOptions().map((phase) => (
+                        <option key={phase.value} value={phase.value}>
+                          {phase.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="block space-y-1 text-xs font-medium text-slate-600">
+                      Data início
+                      <input
+                        type="date"
+                        name="start_date"
+                        defaultValue={toInputDate(primary.startDate)}
+                        className="h-9 w-full rounded-lg border border-[var(--border)] bg-white px-2 text-sm"
+                      />
+                    </label>
+                    <label className="block space-y-1 text-xs font-medium text-slate-600">
+                      Previsão
+                      <input
+                        type="date"
+                        name="expected_date"
+                        defaultValue={toInputDate(primary.expectedDate)}
+                        className="h-9 w-full rounded-lg border border-[var(--border)] bg-white px-2 text-sm"
+                      />
+                    </label>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium text-slate-600">
+                      Responsável
+                    </p>
+                    <p className="text-[10px] text-slate-400">
+                      Quem executa ou acompanha esta entrega
+                    </p>
+                    <WorkResponsiblesPanel
+                      owner={{
+                        kind: "FCC",
+                        featureChannelContextId: primary.id,
+                      }}
+                      initialResponsibles={primary.responsibles ?? []}
+                      canEdit
+                      compact
+                    />
+                    <input
+                      name="responsible"
+                      defaultValue={primary.responsible}
+                      placeholder="Nome livre (legado)"
+                      className="mt-2 h-9 w-full rounded-lg border border-[var(--border)] bg-white px-3 text-sm"
+                    />
+                  </div>
+                  <label className="block space-y-1 text-xs font-medium text-slate-600">
+                    Notas
+                    <textarea
+                      name="notes"
+                      rows={3}
+                      defaultValue={primary.notes}
+                      className="w-full rounded-lg border border-[var(--border)] bg-white px-3 py-2 text-sm"
+                    />
+                  </label>
+                  <div className="flex justify-end">
+                    <Button type="submit" size="sm" disabled={savingDelivery}>
+                      {savingDelivery ? "Salvando…" : "Salvar entrega"}
+                    </Button>
+                  </div>
+                </form>
+              ) : (
+                <dl className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <Meta
+                    label="Responsável"
+                    value={
+                      primary.responsible?.trim() ? primary.responsible : "—"
+                    }
+                    hint="Quem executa ou acompanha esta entrega"
+                    className="sm:col-span-2"
+                  />
+                  {primary.notes?.trim() ? (
+                    <Meta
+                      label="Notas"
+                      value={primary.notes}
+                      className="sm:col-span-2"
+                    />
+                  ) : null}
+                </dl>
+              )}
             </section>
           ) : null}
 
@@ -278,6 +403,7 @@ export function RoadmapFeatureQuickView({
                     key={evo.id}
                     evo={evo}
                     channelName={primary?.channelName ?? ""}
+                    canEdit={canEdit}
                     onView={
                       onOpenEvolution && primary
                         ? () => onOpenEvolution(primary, evo)
@@ -297,6 +423,7 @@ export function RoadmapFeatureQuickView({
                           evo={evo}
                           channelName={primary?.channelName ?? ""}
                           done
+                          canEdit={canEdit}
                           onView={
                             onOpenEvolution && primary
                               ? () => onOpenEvolution(primary, evo)
@@ -389,7 +516,9 @@ export function RoadmapFeatureQuickView({
 
         <footer className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-[var(--border)] px-5 py-3 sm:px-6">
           <p className="text-[11px] text-slate-400">
-            Consulta rápida · dados da esteira
+            {canEdit
+              ? "Edição rápida · dados da esteira"
+              : "Consulta rápida · dados da esteira"}
           </p>
           <Button
             type="button"
@@ -410,11 +539,13 @@ function EvolutionCard({
   evo,
   channelName,
   done,
+  canEdit,
   onView,
 }: {
   evo: FeatureEvolution;
   channelName: string;
   done?: boolean;
+  canEdit?: boolean;
   onView?: () => void;
 }) {
   return (
@@ -448,7 +579,7 @@ function EvolutionCard({
           onClick={onView}
           className="mt-2 text-[11px] font-medium text-[var(--brand)] hover:underline"
         >
-          Ver evolução →
+          {canEdit ? "Editar evolução →" : "Ver evolução →"}
         </button>
       ) : null}
     </li>

@@ -3,21 +3,27 @@
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { upsertFeatureEvolution } from "@/app/actions/crud";
-import { PriorityBadge } from "@/components/badges/priority-badge";
+import { WorkResponsiblesPanel } from "@/components/feature/work-responsibles-panel";
 import { Button } from "@/components/ui/button";
 import {
   EVOLUTION_PHASE_ORDER,
   evolutionPhaseLabel,
+  evolutionPhaseOptions,
   evolutionStatusLabel,
+  priorityLabel,
 } from "@/lib/labels";
-import { cn, formatDate } from "@/lib/utils";
-import type { EvolutionPhase } from "@/types";
+import { cn } from "@/lib/utils";
+import type { EvolutionPhase, Priority } from "@/types";
 import { X } from "lucide-react";
 import {
-  formatMonthYear,
   type FeatureEvolution,
   type RoadmapImpl,
 } from "@/app/roadmap/roadmap-types";
+
+function toInputDate(value: string | null) {
+  if (!value) return "";
+  return value.slice(0, 10);
+}
 
 export function RoadmapEvolutionDrawer({
   evo,
@@ -59,6 +65,21 @@ export function RoadmapEvolutionDrawer({
 
     startTransition(async () => {
       const result = await upsertFeatureEvolution(fd);
+      if (!result.ok) {
+        alert(result.message);
+        return;
+      }
+      router.refresh();
+    });
+  }
+
+  function saveDetails(formData: FormData) {
+    if (!canEdit) return;
+    formData.set("id", evo.id);
+    formData.set("feature_channel_context_id", evo.featureChannelContextId);
+    if (evo.origin) formData.set("origin", evo.origin);
+    startTransition(async () => {
+      const result = await upsertFeatureEvolution(formData);
       if (!result.ok) {
         alert(result.message);
         return;
@@ -135,7 +156,7 @@ export function RoadmapEvolutionDrawer({
                 Implementação
               </dt>
               <dd className="text-slate-800">
-                ● Disponível permanece — a evolução tem ciclo próprio
+                Status da implementação permanece — a evolução tem ciclo próprio
               </dd>
             </div>
           </dl>
@@ -187,44 +208,138 @@ export function RoadmapEvolutionDrawer({
             </ol>
           </div>
 
-          <div>
-            <h3 className="text-sm font-semibold text-slate-900">Detalhes</h3>
-            <dl className="mt-2 space-y-2 text-sm">
-              <div className="flex items-center justify-between gap-2">
-                <dt className="text-slate-500">Prioridade</dt>
-                <dd>
-                  <PriorityBadge priority={evo.priority} />
-                </dd>
+          {canEdit ? (
+            <form
+              key={evo.id}
+              action={saveDetails}
+              className="space-y-3 rounded-xl border border-[var(--border)] bg-slate-50/80 p-3"
+            >
+              <h3 className="text-sm font-semibold text-slate-900">
+                Editar evolução
+              </h3>
+              <label className="block space-y-1 text-xs font-medium text-slate-600">
+                Título
+                <input
+                  name="title"
+                  required
+                  defaultValue={evo.title}
+                  className="h-9 w-full rounded-lg border border-[var(--border)] bg-white px-3 text-sm"
+                />
+              </label>
+              <label className="block space-y-1 text-xs font-medium text-slate-600">
+                Descrição
+                <textarea
+                  name="description"
+                  rows={3}
+                  defaultValue={evo.description}
+                  className="w-full rounded-lg border border-[var(--border)] bg-white px-3 py-2 text-sm"
+                />
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="block space-y-1 text-xs font-medium text-slate-600">
+                  Fase
+                  <select
+                    name="phase"
+                    defaultValue={evo.phase}
+                    className="h-9 w-full rounded-lg border border-[var(--border)] bg-white px-2 text-sm"
+                  >
+                    {evolutionPhaseOptions(false).map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block space-y-1 text-xs font-medium text-slate-600">
+                  Prioridade
+                  <select
+                    name="priority"
+                    defaultValue={evo.priority}
+                    className="h-9 w-full rounded-lg border border-[var(--border)] bg-white px-2 text-sm"
+                  >
+                    {(Object.keys(priorityLabel) as Priority[]).map((key) => (
+                      <option key={key} value={key}>
+                        {priorityLabel[key]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
               </div>
-              <div className="flex justify-between gap-2">
-                <dt className="text-slate-500">Responsável</dt>
-                <dd className="text-slate-800">{evo.responsible || "—"}</dd>
+              <input type="hidden" name="status" value={evo.status} />
+              <div className="grid grid-cols-2 gap-2">
+                <label className="block space-y-1 text-xs font-medium text-slate-600">
+                  Início
+                  <input
+                    type="date"
+                    name="start_date"
+                    defaultValue={toInputDate(evo.startDate)}
+                    className="h-9 w-full rounded-lg border border-[var(--border)] bg-white px-2 text-sm"
+                  />
+                </label>
+                <label className="block space-y-1 text-xs font-medium text-slate-600">
+                  Previsão
+                  <input
+                    type="date"
+                    name="expected_date"
+                    defaultValue={toInputDate(evo.expectedDate)}
+                    className="h-9 w-full rounded-lg border border-[var(--border)] bg-white px-2 text-sm"
+                  />
+                </label>
               </div>
-              <div className="flex justify-between gap-2">
-                <dt className="text-slate-500">Início</dt>
-                <dd className="text-slate-800">{formatDate(evo.startDate)}</dd>
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-slate-600">
+                  Responsável
+                </p>
+                <WorkResponsiblesPanel
+                  owner={{ kind: "EVOLUTION", featureEvolutionId: evo.id }}
+                  initialResponsibles={evo.responsibles ?? []}
+                  canEdit
+                  compact
+                />
+                <input
+                  name="responsible"
+                  defaultValue={evo.responsible}
+                  placeholder="Nome livre (legado)"
+                  className="mt-2 h-9 w-full rounded-lg border border-[var(--border)] bg-white px-3 text-sm"
+                />
               </div>
-              <div className="flex justify-between gap-2">
-                <dt className="text-slate-500">Previsão</dt>
-                <dd className="text-slate-800">
-                  {formatMonthYear(evo.expectedDate)}
-                </dd>
+              <label className="block space-y-1 text-xs font-medium text-slate-600">
+                Notas
+                <textarea
+                  name="notes"
+                  rows={2}
+                  defaultValue={evo.notes}
+                  className="w-full rounded-lg border border-[var(--border)] bg-white px-3 py-2 text-sm"
+                />
+              </label>
+              <div className="flex justify-end">
+                <Button type="submit" size="sm" disabled={pending}>
+                  {pending ? "Salvando…" : "Salvar evolução"}
+                </Button>
               </div>
-              {evo.completedDate ? (
+            </form>
+          ) : (
+            <div>
+              <h3 className="text-sm font-semibold text-slate-900">Detalhes</h3>
+              <dl className="mt-2 space-y-2 text-sm">
                 <div className="flex justify-between gap-2">
-                  <dt className="text-slate-500">Concluída em</dt>
+                  <dt className="text-slate-500">Prioridade</dt>
                   <dd className="text-slate-800">
-                    {formatMonthYear(evo.completedDate)}
+                    {priorityLabel[evo.priority]}
                   </dd>
                 </div>
+                <div className="flex justify-between gap-2">
+                  <dt className="text-slate-500">Responsável</dt>
+                  <dd className="text-slate-800">{evo.responsible || "—"}</dd>
+                </div>
+              </dl>
+              {evo.description ? (
+                <p className="mt-3 text-sm leading-relaxed text-slate-600">
+                  {evo.description}
+                </p>
               ) : null}
-            </dl>
-            {evo.description ? (
-              <p className="mt-3 text-sm leading-relaxed text-slate-600">
-                {evo.description}
-              </p>
-            ) : null}
-          </div>
+            </div>
+          )}
 
           {canEdit && currentPhase !== "DONE" ? (
             <Button

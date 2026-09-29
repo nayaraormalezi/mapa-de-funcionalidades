@@ -46,6 +46,7 @@ export default async function RoadmapPage() {
     expectedDate: row.expectedDate,
     launchDate: row.launchDate,
     responsible: row.responsible,
+    responsibles: row.responsibles ?? [],
     notes: row.notes,
     experience: row.experience,
     channelContextId: row.channelContextId,

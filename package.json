@@ -21,6 +21,7 @@
     "test:change-password": "npx --yes tsx src/lib/change-password.assert.ts",
     "test:work-responsibles": "node --experimental-strip-types src/lib/work-responsibles.assert.ts",
     "test:roadmap-quick-view": "node --experimental-strip-types src/app/roadmap/roadmap-quick-view.assert.ts",
+    "test:channel-impl-detail": "node --experimental-strip-types src/lib/channel-implementation-detail.assert.ts",
     "typecheck": "tsc --noEmit",
     "seed:fase16-3:dry": "npx --yes tsx scripts/load-fase16-3-catalog.ts --dry-run",
     "seed:fase16-3": "npx --yes tsx scripts/load-fase16-3-catalog.ts --apply",

@@ -38,6 +38,11 @@ import {
   subscribeFeatureCommentsChanged,
 } from "@/lib/comment-sync";
 import {
+  filterCommentsByChannelScope,
+  resolveCreateFeatureChannelContextId,
+  type ChannelCommentScope,
+} from "@/lib/channel-implementation-detail";
+import {
   canCreateInternalComments,
   canViewInternalComments,
   emptyCommentsMessage,
@@ -48,6 +53,14 @@ import {
 import { roleCan } from "@/lib/permissions";
 import { cn, formatDateTime } from "@/lib/utils";
 import { Globe2, Lock, MessageSquare, Reply } from "lucide-react";
+
+export type CommentChannelFilterOption = {
+  /** `__all__` | `__general__` | chave do card de canal */
+  value: string;
+  label: string;
+  /** FCC ids do canal (vazio para all/general). */
+  fccIds?: string[];
+};
 
 function initials(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -578,17 +591,28 @@ export function FeatureComments({
   featureId,
   className,
   compact = false,
+  /** Modal de canal: trava leitura/criação neste FCC. */
+  featureChannelContextId = null,
+  /** Ficha geral: chips Todos / Geral / canais. */
+  channelFilterOptions,
 }: {
   featureId: string;
   className?: string;
   /** Layout mais denso para drawer/pré-visualização. */
   compact?: boolean;
+  featureChannelContextId?: string | null;
+  channelFilterOptions?: CommentChannelFilterOption[];
 }) {
   const { role, userId } = useAuth();
   const canCreate = Boolean(userId) && roleCan(role, "comment.create");
   const canDelete = roleCan(role, "comment.delete");
   const showInternal = canViewInternalComments(role);
   const canChooseVisibility = canCreateInternalComments(role);
+  const lockedFccId = featureChannelContextId
+    ? String(featureChannelContextId).trim() || null
+    : null;
+  const showChannelFilters =
+    !lockedFccId && Boolean(channelFilterOptions?.length);
 
   const [comments, setComments] = useState<FeatureCommentDTO[]>([]);
   const [loading, setLoading] = useState(true);
@@ -600,7 +624,19 @@ export function FeatureComments({
   const [tab, setTab] = useState<CommentFilterTab>(
     showInternal ? "all" : "public",
   );
+  const [channelFilterValue, setChannelFilterValue] = useState("__all__");
   const [pending, startTransition] = useTransition();
+
+  const channelScope: ChannelCommentScope = useMemo(() => {
+    if (lockedFccId) return { type: "fcc", fccIds: [lockedFccId] };
+    if (channelFilterValue === "__general__") return { type: "general" };
+    if (channelFilterValue === "__all__") return { type: "all" };
+    const opt = channelFilterOptions?.find(
+      (o) => o.value === channelFilterValue,
+    );
+    if (opt?.fccIds?.length) return { type: "fcc", fccIds: opt.fccIds };
+    return { type: "all" };
+  }, [lockedFccId, channelFilterValue, channelFilterOptions]);
 
   useEffect(() => {
     if (!showInternal && tab !== "public") setTab("public");
@@ -658,9 +694,14 @@ export function FeatureComments({
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, [reload]);
 
+  const scopedComments = useMemo(
+    () => filterCommentsByChannelScope(comments, channelScope),
+    [comments, channelScope],
+  );
+
   const filtered = useMemo(
-    () => filterCommentsByTab(comments, tab, role),
-    [comments, tab, role],
+    () => filterCommentsByTab(scopedComments, tab, role),
+    [scopedComments, tab, role],
   );
 
   const roots = useMemo(
@@ -682,7 +723,7 @@ export function FeatureComments({
     return map;
   }, [filtered]);
 
-  const totalCount = comments.length;
+  const totalCount = scopedComments.length;
 
   async function handleCreate(
     content: string,
@@ -690,12 +731,17 @@ export function FeatureComments({
     visibility: CommentVisibility,
     parentCommentId?: string | null,
   ): Promise<boolean> {
+    const fccForCreate = resolveCreateFeatureChannelContextId({
+      lockedFccId,
+      channelFilter: channelScope,
+    });
     return await new Promise((resolve) => {
       startTransition(async () => {
         const result = await createFeatureComment({
           featureId,
           content,
           parentCommentId: parentCommentId ?? null,
+          featureChannelContextId: fccForCreate,
           mentionedUserIds,
           visibility,
         });
@@ -859,6 +905,32 @@ export function FeatureComments({
           </button>
         ))}
       </div>
+
+      {showChannelFilters ? (
+        <div
+          className="flex flex-wrap gap-1.5"
+          role="tablist"
+          aria-label="Filtro por canal"
+        >
+          {(channelFilterOptions ?? []).map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              role="tab"
+              aria-selected={channelFilterValue === opt.value}
+              className={cn(
+                "rounded-full px-3 py-1 text-xs font-semibold transition-colors",
+                channelFilterValue === opt.value
+                  ? "bg-sky-700 text-white"
+                  : "bg-sky-50 text-sky-800 hover:bg-sky-100",
+              )}
+              onClick={() => setChannelFilterValue(opt.value)}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       {canCreate ? (
         <CommentComposer

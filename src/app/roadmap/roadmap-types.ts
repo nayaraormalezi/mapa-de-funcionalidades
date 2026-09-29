@@ -25,6 +25,8 @@ export type RoadmapImpl = {
   expectedDate: string | null;
   launchDate: string | null;
   responsible: string;
+  /** Responsáveis estruturados da implementação (FCC). */
+  responsibles?: import("@/types").WorkResponsible[];
   notes: string;
   experience: ExperienceLevel;
   channelContextId: string;

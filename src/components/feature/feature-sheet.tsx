@@ -14,6 +14,7 @@ import {
   HealthGlance,
   type EvaluationLaunchRequest,
 } from "@/components/feature/channel-intelligence";
+import { ChannelImplementationDetailModal } from "@/components/feature/channel-implementation-detail-modal";
 import { FeatureComments } from "@/components/feature/feature-comments";
 import { WorkResponsiblesPanel } from "@/components/feature/work-responsibles-panel";
 import {
@@ -308,6 +309,7 @@ export function FeatureSheet({
   const router = useRouter();
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [modal, setModal] = useState<SheetModalState>(null);
+  const [detailCardKey, setDetailCardKey] = useState<string | null>(null);
   const [viewEvolution, setViewEvolution] = useState<{
     evolution: FeatureEvolution;
     channelName: string;
@@ -319,6 +321,24 @@ export function FeatureSheet({
   const [, startTransition] = useTransition();
 
   const cards = useMemo(() => groupChannelCards(contexts), [contexts]);
+
+  const detailCard = useMemo(
+    () => cards.find((c) => c.key === detailCardKey) ?? null,
+    [cards, detailCardKey],
+  );
+
+  const commentChannelFilters = useMemo(
+    () => [
+      { value: "__all__", label: "Todos" },
+      { value: "__general__", label: "Geral" },
+      ...cards.map((c) => ({
+        value: c.key,
+        label: c.channelName,
+        fccIds: c.fccIds,
+      })),
+    ],
+    [cards],
+  );
 
   const productLabel = useMemo(() => {
     if (feature.productIds?.length) {
@@ -752,6 +772,7 @@ export function FeatureSheet({
             evidences={evidences}
             canEdit={canEdit}
             onOpenImage={setLightboxSrc}
+            onOpenDetail={(card) => setDetailCardKey(card.key)}
             onViewEvolution={(evolution, channelName) =>
               setViewEvolution({ evolution, channelName })
             }
@@ -1202,7 +1223,90 @@ export function FeatureSheet({
         )}
       </section>
 
-      <FeatureComments featureId={feature.id} />
+      <FeatureComments
+        featureId={feature.id}
+        channelFilterOptions={commentChannelFilters}
+      />
+
+      {detailCard ? (
+        <ChannelImplementationDetailModal
+          featureId={feature.id}
+          featureName={feature.name}
+          card={detailCard}
+          evolutions={activeEvolutions}
+          evaluations={
+            evaluationsByChannelContext.get(
+              detailCard.primaryContext.channelContextId,
+            ) ?? []
+          }
+          gaps={gaps}
+          canEdit={canEdit}
+          onClose={() => setDetailCardKey(null)}
+          onEdit={() => {
+            setDetailCardKey(null);
+            setModal({
+              type: "implementation",
+              context: detailCard.primaryContext,
+              mode: "full",
+              implementations: detailCard.implementations,
+            });
+          }}
+          onAddFigma={() => {
+            setDetailCardKey(null);
+            setModal({
+              type: "implementation",
+              context: detailCard.primaryContext,
+              mode: "figma",
+            });
+          }}
+          onAddScreenshot={() => {
+            setDetailCardKey(null);
+            setModal({
+              type: "implementation",
+              context: detailCard.primaryContext,
+              mode: "screenshot",
+            });
+          }}
+          onDuplicate={() => {
+            setDetailCardKey(null);
+            duplicateImplementation(detailCard.primaryContext);
+          }}
+          onRemove={() => {
+            setDetailCardKey(null);
+            archiveItem(
+              "feature_channel_contexts",
+              detailCard.primaryContext.featureChannelContextId,
+            );
+          }}
+          onCreateEvolution={() => {
+            setDetailCardKey(null);
+            setModal({
+              type: "evolution",
+              evolution: null,
+              defaults: {
+                origin: "MANUAL",
+                featureChannelContextId:
+                  detailCard.primaryContext.featureChannelContextId,
+                phase: "BACKLOG",
+                title: `Evolução · ${detailCard.channelName}`,
+                channelLabel: `${detailCard.audienceName} · ${detailCard.momentName} · ${detailCard.channelName}`,
+                audienceName: detailCard.audienceName,
+                momentName: detailCard.momentName,
+                channelName: detailCard.channelName,
+                lockChannel: true,
+                implementations: detailCard.implementations,
+              },
+            });
+          }}
+          onViewEvolution={(evolution) => {
+            setViewEvolution({
+              evolution,
+              channelName: detailCard.channelName,
+            });
+          }}
+          onOpenImage={setLightboxSrc}
+        />
+      ) : null}
 
       {lightboxSrc ? (
         <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
@@ -1322,6 +1426,7 @@ function ChannelCardsRow({
   canEdit,
   evalLaunch,
   onOpenImage,
+  onOpenDetail,
   onViewEvolution,
   onEdit,
   onAddFigma,
@@ -1342,6 +1447,7 @@ function ChannelCardsRow({
     request: EvaluationLaunchRequest;
   } | null;
   onOpenImage: (src: string) => void;
+  onOpenDetail: (card: ChannelCard) => void;
   onViewEvolution: (evolution: FeatureEvolution, channelName: string) => void;
   onEdit: (card: ChannelCard) => void;
   onAddFigma: (ctx: FeatureMapRow) => void;
@@ -1379,6 +1485,7 @@ function ChannelCardsRow({
         canEdit={canEdit}
         launchRequest={launchForCard}
         onOpenImage={onOpenImage}
+        onOpenDetail={() => onOpenDetail(card)}
         onViewEvolution={onViewEvolution}
         onEdit={() => onEdit(card)}
         onAddFigma={() => onAddFigma(card.primaryContext)}
@@ -1489,6 +1596,7 @@ function ChannelAvailabilityCard({
   canEdit,
   launchRequest,
   onOpenImage,
+  onOpenDetail,
   onViewEvolution,
   onEdit,
   onAddFigma,
@@ -1506,6 +1614,7 @@ function ChannelAvailabilityCard({
   canEdit: boolean;
   launchRequest?: EvaluationLaunchRequest | null;
   onOpenImage: (src: string) => void;
+  onOpenDetail: () => void;
   onViewEvolution: (evolution: FeatureEvolution, channelName: string) => void;
   onEdit: () => void;
   onAddFigma: () => void;
@@ -1550,9 +1659,15 @@ function ChannelAvailabilityCard({
   return (
     <article
       id={`canal-${card.primaryContext.channelContextId}`}
-      className="flex h-full flex-col rounded-xl border border-[var(--border)] bg-white p-4"
+      className="group relative flex h-full flex-col rounded-xl border border-[var(--border)] bg-white p-4 transition-colors hover:border-slate-300 hover:bg-slate-50/40"
     >
-      <div className="flex items-start justify-between gap-2">
+      <button
+        type="button"
+        className="absolute inset-0 z-0 rounded-xl"
+        aria-label={`Ver detalhes de ${card.channelName}`}
+        onClick={onOpenDetail}
+      />
+      <div className="relative z-[1] flex items-start justify-between gap-2 pointer-events-none">
         <div className="min-w-0">
           <h3 className="text-sm font-semibold text-slate-900 sm:text-base">
             {card.channelName}
@@ -1568,14 +1683,15 @@ function ChannelAvailabilityCard({
             </p>
           ) : null}
         </div>
-        <div className="flex items-center gap-1">
+        <div className="pointer-events-auto flex items-center gap-1">
           <StageBadge stage={card.phase} />
           {canEdit ? <ActionMenu items={menuItems} /> : null}
         </div>
       </div>
 
+      <div className="relative z-[1] mt-3 flex flex-1 flex-col pointer-events-auto">
       <UnderlineTabs
-        className="mt-3"
+        className=""
         options={[
           { id: "tela", label: "Tela" },
           {
@@ -1737,6 +1853,15 @@ function ChannelAvailabilityCard({
           onAddEvidence={onAddEvidence}
         />
       )}
+
+      <button
+        type="button"
+        onClick={onOpenDetail}
+        className="mt-3 self-start text-xs font-semibold text-[var(--brand)] underline-offset-2 hover:underline"
+      >
+        Ver detalhes →
+      </button>
+      </div>
     </article>
   );
 }

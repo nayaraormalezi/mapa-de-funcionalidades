@@ -28,6 +28,7 @@ export type CommentMentionDTO = {
 export type FeatureCommentDTO = {
   id: string;
   featureId: string;
+  featureChannelContextId: string | null;
   userId: string;
   parentCommentId: string | null;
   content: string;
@@ -132,7 +133,7 @@ export async function listFeatureComments(
   let query = supabase
     .from("feature_comments")
     .select(
-      "id, feature_id, user_id, parent_comment_id, content, visibility, created_at, updated_at",
+      "id, feature_id, feature_channel_context_id, user_id, parent_comment_id, content, visibility, created_at, updated_at",
     )
     .eq("feature_id", id)
     .order("created_at", { ascending: false });
@@ -187,6 +188,9 @@ export async function listFeatureComments(
     return {
       id: cid,
       featureId: String(row.feature_id),
+      featureChannelContextId: row.feature_channel_context_id
+        ? String(row.feature_channel_context_id)
+        : null,
       userId: String(row.user_id),
       parentCommentId: row.parent_comment_id
         ? String(row.parent_comment_id)
@@ -295,6 +299,8 @@ export async function createFeatureComment(input: {
   featureId: string;
   content: string;
   parentCommentId?: string | null;
+  /** NULL/omit = comentário geral da Feature; preenchido = implementação (FCC). */
+  featureChannelContextId?: string | null;
   mentionedUserIds?: string[];
   visibility?: CommentVisibility;
 }): Promise<ActionResult> {
@@ -337,11 +343,15 @@ export async function createFeatureComment(input: {
   let parentCommentId: string | null = null;
   let parentVisibility: CommentVisibility | null = null;
   let parentAuthorUserId: string | null = null;
+  let featureChannelContextId: string | null =
+    String(input.featureChannelContextId ?? "").trim() || null;
 
   if (parentRaw) {
     const { data: parent, error: parentError } = await supabase
       .from("feature_comments")
-      .select("id, feature_id, parent_comment_id, visibility, user_id")
+      .select(
+        "id, feature_id, parent_comment_id, visibility, user_id, feature_channel_context_id",
+      )
       .eq("id", parentRaw)
       .maybeSingle();
     if (parentError) return { ok: false, message: parentError.message };
@@ -351,6 +361,10 @@ export async function createFeatureComment(input: {
 
     parentVisibility = normalizeCommentVisibility(parent.visibility, "PUBLIC");
     parentAuthorUserId = String(parent.user_id);
+    // Resposta herda o contexto do pai (geral ou canal).
+    featureChannelContextId = parent.feature_channel_context_id
+      ? String(parent.feature_channel_context_id)
+      : null;
 
     // Viewer não deve conseguir ler INTERNAL via RLS; se chegou null/ausente, tratar.
     if (
@@ -371,13 +385,35 @@ export async function createFeatureComment(input: {
     if (parent.parent_comment_id) {
       const { data: root, error: rootError } = await supabase
         .from("feature_comments")
-        .select("id, visibility, user_id")
+        .select("id, visibility, user_id, feature_channel_context_id")
         .eq("id", parentCommentId)
         .maybeSingle();
       if (rootError) return { ok: false, message: rootError.message };
       if (!root) return { ok: false, message: "Comentário pai não encontrado." };
       parentVisibility = normalizeCommentVisibility(root.visibility, "PUBLIC");
       parentAuthorUserId = String(root.user_id);
+      featureChannelContextId = root.feature_channel_context_id
+        ? String(root.feature_channel_context_id)
+        : null;
+    }
+  }
+
+  if (featureChannelContextId) {
+    const { data: fcc, error: fccError } = await supabase
+      .from("feature_channel_contexts")
+      .select("id, feature_id, active")
+      .eq("id", featureChannelContextId)
+      .maybeSingle();
+    if (fccError) return { ok: false, message: fccError.message };
+    if (
+      !fcc ||
+      !fcc.active ||
+      String(fcc.feature_id) !== featureId
+    ) {
+      return {
+        ok: false,
+        message: "Implementação (canal) inválida para este comentário.",
+      };
     }
   }
 
@@ -436,6 +472,7 @@ export async function createFeatureComment(input: {
   const { error } = await supabase.from("feature_comments").insert({
     id,
     feature_id: featureId,
+    feature_channel_context_id: featureChannelContextId,
     user_id: userId,
     parent_comment_id: parentCommentId,
     content,
