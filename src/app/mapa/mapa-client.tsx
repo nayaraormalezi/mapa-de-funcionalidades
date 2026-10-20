@@ -60,6 +60,7 @@ const legendDot: Record<FeatureStage, string> = {
   UX_UI: "bg-[#b26f9b]",
   DEVELOPMENT: "bg-[#f39300]",
   HOMOLOGATION: "bg-[#f8b019]",
+  BLOCKED: "bg-rose-500",
   PAUSED: "bg-[#005ca9]",
   REMOVED: "bg-stone-500",
   AVAILABLE: "bg-[#a6ce39]",

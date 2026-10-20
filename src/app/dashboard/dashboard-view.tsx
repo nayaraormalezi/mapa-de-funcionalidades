@@ -73,6 +73,7 @@ const STAGE_TONE: Record<
   UX_UI: "info",
   DEVELOPMENT: "warning",
   HOMOLOGATION: "warning",
+  BLOCKED: "danger",
   PAUSED: "default",
   REMOVED: "default",
   AVAILABLE: "success",
@@ -154,6 +155,7 @@ function bestFeatureStage(stages: FeatureStage[]): FeatureStage {
   const inDev = stages.find((s) => DEVELOPMENT_STAGES.includes(s));
   if (inDev) return inDev;
   if (stages.includes("BACKLOG")) return "BACKLOG";
+  if (stages.includes("BLOCKED")) return "BLOCKED";
   if (stages.includes("PAUSED")) return "PAUSED";
   return stages[0] ?? "REMOVED";
 }

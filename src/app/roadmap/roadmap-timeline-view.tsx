@@ -22,6 +22,7 @@ const STAGE_BAR: Record<FeatureStage, string> = {
   UX_UI: "bg-violet-400",
   DEVELOPMENT: "bg-amber-400",
   HOMOLOGATION: "bg-orange-400",
+  BLOCKED: "bg-rose-400",
   PAUSED: "bg-slate-400",
   REMOVED: "bg-stone-400",
   AVAILABLE: "bg-emerald-500",

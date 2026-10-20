@@ -33,7 +33,7 @@ import {
   evolutionPhaseOptions,
   evolutionStatusLabel,
   featureStageLabel,
-  featureStatusOptions,
+  featureStageOptions,
   priorityLabel,
 } from "@/lib/labels";
 import { cn, formatDate } from "@/lib/utils";
@@ -331,7 +331,7 @@ export function RoadmapFeatureQuickView({
                       onChange={(e) => patchPrimary({ phase: e.target.value })}
                       className="appearance-none rounded-full border-0 bg-violet-100 py-1.5 pr-7 pl-3 text-sm font-semibold text-violet-900 outline-none ring-0 focus:ring-2 focus:ring-violet-300"
                     >
-                      {featureStatusOptions().map((opt) => (
+                      {featureStageOptions().map((opt) => (
                         <option key={opt.value} value={opt.value}>
                           ● {opt.label}
                         </option>

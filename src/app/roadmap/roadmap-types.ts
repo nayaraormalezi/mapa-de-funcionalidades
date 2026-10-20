@@ -55,7 +55,11 @@ export const PIPELINE_STAGES: RoadmapPhase[] = [
   "AVAILABLE",
 ];
 
-export const EXCEPTION_STAGES: RoadmapPhase[] = ["PAUSED", "REMOVED"];
+export const EXCEPTION_STAGES: RoadmapPhase[] = [
+  "BLOCKED",
+  "PAUSED",
+  "REMOVED",
+];
 
 export function formatMonthYear(value: string | null | undefined): string {
   if (!value) return "—";
@@ -88,7 +92,9 @@ export function activeEvolutions(item: RoadmapImpl): FeatureEvolution[] {
       e.phase !== "DONE" &&
       e.status !== "DONE" &&
       e.status !== "CANCELLED" &&
-      (e.status === "IN_PROGRESS" || e.status === "PAUSED"),
+      (e.status === "IN_PROGRESS" ||
+        e.status === "PAUSED" ||
+        e.status === "BLOCKED"),
   );
 }
 
@@ -126,6 +132,7 @@ export function buildKanbanCards(items: RoadmapImpl[]): KanbanBoardCard[] {
 
 export function kanbanColumnForCard(card: KanbanBoardCard): RoadmapPhase {
   if (card.kind === "impl") return card.item.phase;
+  if (card.evo.status === "BLOCKED") return "BLOCKED";
   if (card.evo.status === "PAUSED") return "PAUSED";
   if (card.evo.status === "CANCELLED") return "REMOVED";
   if (card.evo.phase === "DONE") return "AVAILABLE";

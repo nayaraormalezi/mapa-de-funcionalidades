@@ -53,7 +53,7 @@ export function detectCoverageGaps(
 
   for (const card of cards) {
     if (card.phase === "AVAILABLE") continue;
-    if (card.phase === "REMOVED" || card.phase === "PAUSED") continue;
+    if (card.phase === "REMOVED" || card.phase === "PAUSED" || card.phase === "BLOCKED") continue;
 
     const channelContextId = card.primaryContext.channelContextId;
     const fccId = card.primaryContext.featureChannelContextId;

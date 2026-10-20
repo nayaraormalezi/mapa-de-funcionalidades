@@ -35,6 +35,7 @@ export type FeatureStage =
   | "UX_UI"
   | "DEVELOPMENT"
   | "HOMOLOGATION"
+  | "BLOCKED"
   | "PAUSED"
   | "REMOVED"
   | "AVAILABLE";
@@ -47,7 +48,8 @@ export type EvolutionStatus =
   | "IN_PROGRESS"
   | "DONE"
   | "CANCELLED"
-  | "PAUSED";
+  | "PAUSED"
+  | "BLOCKED";
 
 /** Fase do trabalho da evolução (pipeline da melhoria). */
 export type EvolutionPhase =

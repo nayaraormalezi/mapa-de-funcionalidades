@@ -29,6 +29,7 @@ const STATUS_SET = new Set<string>([
   "DONE",
   "CANCELLED",
   "PAUSED",
+  "BLOCKED",
 ]);
 
 const PHASE_SET = new Set<string>([
@@ -58,6 +59,13 @@ export const EVOLUTION_STATUS_PHASE_MATRIX: Record<
     DONE: false,
   },
   PAUSED: {
+    BACKLOG: true,
+    UX_UI: true,
+    DEVELOPMENT: true,
+    HOMOLOGATION: true,
+    DONE: false,
+  },
+  BLOCKED: {
     BACKLOG: true,
     UX_UI: true,
     DEVELOPMENT: true,
@@ -127,7 +135,7 @@ export function reconcileEvolutionStatusPhase(
   }
 
   if (!EVOLUTION_STATUS_PHASE_MATRIX[status][phase]) {
-    if (status === "CANCELLED" || status === "PAUSED") {
+    if (status === "CANCELLED" || status === "PAUSED" || status === "BLOCKED") {
       return { status, phase: "HOMOLOGATION" };
     }
     return { status: "IN_PROGRESS", phase };

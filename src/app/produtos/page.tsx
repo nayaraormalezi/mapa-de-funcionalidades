@@ -38,7 +38,7 @@ export default async function ProdutosPage({
     if (!evo.active) continue;
     if (evo.phase === "DONE") continue;
     if (evo.status === "DONE" || evo.status === "CANCELLED") continue;
-    if (evo.status !== "IN_PROGRESS" && evo.status !== "PAUSED") continue;
+    if (evo.status !== "IN_PROGRESS" && evo.status !== "PAUSED" && evo.status !== "BLOCKED") continue;
     const productId = fccProductById.get(evo.featureChannelContextId);
     if (!productId || !isProductId(productId)) continue;
     evolutionCountByProduct.set(

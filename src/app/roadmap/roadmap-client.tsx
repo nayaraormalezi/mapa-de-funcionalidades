@@ -274,6 +274,9 @@ export function RoadmapClient({
     if (evo.status === "PAUSED" && nextPhase === evo.phase) {
       status = "PAUSED";
       phase = evo.phase === "DONE" ? "HOMOLOGATION" : evo.phase;
+    } else if (evo.status === "BLOCKED" && nextPhase === evo.phase) {
+      status = "BLOCKED";
+      phase = evo.phase === "DONE" ? "HOMOLOGATION" : evo.phase;
     } else if (evo.status === "CANCELLED") {
       status = "CANCELLED";
       phase = evo.phase === "DONE" ? "HOMOLOGATION" : evo.phase;

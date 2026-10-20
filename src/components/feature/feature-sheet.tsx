@@ -288,6 +288,7 @@ function groupChannelCards(contexts: FeatureMapRow[]): ChannelCard[] {
     "DEVELOPMENT",
     "UX_UI",
     "BACKLOG",
+    "BLOCKED",
     "PAUSED",
     "REMOVED",
   ];
@@ -1880,7 +1881,9 @@ function ChannelAvailabilityCard({
               compact
             />
             <TicketTiLine ticketNumber={card.ticketNumber} />
-            {(card.phase === "PAUSED" || card.phase === "REMOVED") &&
+            {(card.phase === "PAUSED" ||
+              card.phase === "BLOCKED" ||
+              card.phase === "REMOVED") &&
             card.notes &&
             !/^DEMO/i.test(card.notes) ? (
               <p>Motivo: {card.notes}</p>

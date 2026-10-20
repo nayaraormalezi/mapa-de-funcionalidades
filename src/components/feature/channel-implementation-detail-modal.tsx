@@ -21,7 +21,7 @@ import {
   evolutionPhaseLabel,
   evolutionStatusLabel,
   featureStageLabel,
-  featureStatusOptions,
+  featureStageOptions,
   gapTypeLabel,
 } from "@/lib/labels";
 import { cn, formatDate } from "@/lib/utils";
@@ -325,7 +325,7 @@ export function ChannelImplementationDetailModal({
                     onChange={(e) => patchContext({ phase: e.target.value })}
                     className="appearance-none rounded-full border-0 bg-violet-100 py-1.5 pr-7 pl-3 text-sm font-semibold text-violet-900 outline-none focus:ring-2 focus:ring-violet-300"
                   >
-                    {featureStatusOptions().map((opt) => (
+                    {featureStageOptions().map((opt) => (
                       <option key={opt.value} value={opt.value}>
                         ● {opt.label}
                       </option>

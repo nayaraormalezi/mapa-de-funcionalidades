@@ -21,6 +21,7 @@ export const featureStageLabel: Record<FeatureStage, string> = {
   UX_UI: "UX/UI",
   DEVELOPMENT: "Em desenvolvimento",
   HOMOLOGATION: "Homologação",
+  BLOCKED: "Impedido",
   PAUSED: "Pausado",
   REMOVED: "Removido",
   AVAILABLE: "Disponível",
@@ -32,6 +33,7 @@ export const FEATURE_STAGE_ORDER: FeatureStage[] = [
   "UX_UI",
   "DEVELOPMENT",
   "HOMOLOGATION",
+  "BLOCKED",
   "PAUSED",
   "REMOVED",
   "AVAILABLE",
@@ -268,6 +270,7 @@ export const evolutionStatusLabel: Record<
   DONE: "Concluída",
   CANCELLED: "Cancelada",
   PAUSED: "Pausada",
+  BLOCKED: "Impedida",
 };
 
 export const evolutionPhaseLabelMap: Record<
@@ -324,7 +327,11 @@ export function isEvolutionInProgress(e: {
   if (e.status === "DONE" || e.status === "CANCELLED" || e.phase === "DONE") {
     return false;
   }
-  return e.status === "IN_PROGRESS" || e.status === "PAUSED";
+  return (
+    e.status === "IN_PROGRESS" ||
+    e.status === "PAUSED" ||
+    e.status === "BLOCKED"
+  );
 }
 
 export const evidenceTypeLabel: Record<EvidenceType, string> = {
@@ -354,6 +361,7 @@ export const ACTIVE_PIPELINE_STAGES: FeatureStage[] = [
   "UX_UI",
   "DEVELOPMENT",
   "HOMOLOGATION",
+  "BLOCKED",
   "PAUSED",
   "AVAILABLE",
 ];

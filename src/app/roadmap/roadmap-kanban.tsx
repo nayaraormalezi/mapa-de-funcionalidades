@@ -111,6 +111,13 @@ export function RoadmapKanban({
         card.evo.phase === "DONE" ? "HOMOLOGATION" : card.evo.phase,
       );
       return;
+    } else if (dropPhase === "BLOCKED") {
+      onMoveEvoPhase(
+        card.item,
+        { ...card.evo, status: "BLOCKED" },
+        card.evo.phase === "DONE" ? "HOMOLOGATION" : card.evo.phase,
+      );
+      return;
     } else if (
       dropPhase === "BACKLOG" ||
       dropPhase === "UX_UI" ||
@@ -123,7 +130,13 @@ export function RoadmapKanban({
     }
 
     if (nextEvo === card.evo.phase && card.evo.status === "IN_PROGRESS") return;
-    onMoveEvoPhase(card.item, card.evo, nextEvo);
+    const leavingHold =
+      card.evo.status === "PAUSED" || card.evo.status === "BLOCKED";
+    onMoveEvoPhase(
+      card.item,
+      leavingHold ? { ...card.evo, status: "IN_PROGRESS" } : card.evo,
+      nextEvo,
+    );
   }
 
   return (
@@ -162,6 +175,11 @@ export function RoadmapKanban({
               onOpenFeature={onOpenFeature}
               onOpenEvolution={onOpenEvolution}
               muted
+              hint={
+                phase === "BLOCKED"
+                  ? "Entregas com impedimento ativo"
+                  : undefined
+              }
             />
           ))}
         </div>
